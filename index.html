@@ -645,12 +645,14 @@
         .collection-btn.active { border-color: rgba(239, 68, 68, 0.6); box-shadow: 0 0 15px rgba(239, 68, 68, 0.3); }
         
         .collection-dropdown-wrapper { position: relative; }
+        /* 🔥 Позиционирование коллекции управляется через JS (position: fixed),
+           правый край выравнивается с правым краем календаря */
         .collection-dropdown {
-            position: absolute;
-            top: calc(100% + 8px);
+            position: fixed;
+            top: 0;
             left: 0;
-            width: 420px;
-            max-width: 90vw;
+            width: auto;
+            max-width: none;
             background: rgba(15, 23, 42, 0.98);
             backdrop-filter: blur(16px);
             border: 1px solid rgba(239, 68, 68, 0.3);
@@ -666,19 +668,6 @@
         .collection-dropdown::-webkit-scrollbar-track { background: transparent; }
         .collection-dropdown::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.3); border-radius: 3px; }
         .collection-dropdown::-webkit-scrollbar-thumb:hover { background: rgba(148, 163, 184, 0.5); }
-        
-        @media (max-width: 768px) {
-            .collection-dropdown {
-                left: auto;
-                right: 0;
-                width: auto;
-                max-width: none;
-                position: fixed;
-                top: auto;
-                bottom: 16px;
-                max-height: 70vh;
-            }
-        }
         
         .collection-header {
             padding: 16px;
@@ -1409,74 +1398,95 @@
             else openMonthDropdown();
         });
 
+        // 🔥 Функции закрытия dropdown-ов (для взаимной эксклюзивности)
+        function closeUpdatesDropdown() {
+            updatesDropdown.classList.remove('open');
+            updatesBtn.classList.remove('active');
+        }
+        function closeCollectionDropdown() {
+            collectionDropdown.classList.remove('open');
+            collectionBtn.classList.remove('active');
+        }
+
+        // 🔥 Позиционирование dropdown коллекции: правый край вровень с правым краем календаря
+        function positionCollectionDropdown() {
+            const btnRect = collectionBtn.getBoundingClientRect();
+            const calSection = document.getElementById('schedule-section');
+            if (!calSection) return;
+            const calRect = calSection.getBoundingClientRect();
+            
+            collectionDropdown.style.position = 'fixed';
+            collectionDropdown.style.top = (btnRect.bottom + 8) + 'px';
+            // Правый край dropdown = правый край календаря
+            collectionDropdown.style.right = (window.innerWidth - calRect.right) + 'px';
+            collectionDropdown.style.left = 'auto';
+            collectionDropdown.style.width = 'auto';
+            collectionDropdown.style.maxWidth = calRect.width + 'px';
+            const maxH = Math.min(600, window.innerHeight - btnRect.bottom - 24);
+            collectionDropdown.style.maxHeight = maxH + 'px';
+        }
+
         updatesBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             const isOpen = updatesDropdown.classList.contains('open');
             
-            if (!isOpen) {
-                const isMobile = window.innerWidth < 768;
-                if (isMobile) {
-                    const btnRect = updatesBtn.getBoundingClientRect();
-                    const dropdownHeight = Math.min(500, window.innerHeight - btnRect.bottom - 32);
-                    updatesDropdown.style.top = (btnRect.bottom + 8) + 'px';
-                    updatesDropdown.style.left = '16px';
-                    updatesDropdown.style.right = '16px';
-                    updatesDropdown.style.width = 'auto';
-                    updatesDropdown.style.maxHeight = dropdownHeight + 'px';
-                    updatesDropdown.style.position = 'fixed';
-                } else {
-                    updatesDropdown.style.top = '';
-                    updatesDropdown.style.left = '';
-                    updatesDropdown.style.right = '';
-                    updatesDropdown.style.width = '';
-                    updatesDropdown.style.maxHeight = '';
-                    updatesDropdown.style.position = '';
-                }
+            if (isOpen) {
+                closeUpdatesDropdown();
+                return;
             }
             
-            updatesDropdown.classList.toggle('open');
-            updatesBtn.classList.toggle('active');
+            // 🔥 Закрываем коллекцию, если открыта
+            closeCollectionDropdown();
+            
+            const isMobile = window.innerWidth < 768;
+            if (isMobile) {
+                const btnRect = updatesBtn.getBoundingClientRect();
+                const dropdownHeight = Math.min(500, window.innerHeight - btnRect.bottom - 32);
+                updatesDropdown.style.top = (btnRect.bottom + 8) + 'px';
+                updatesDropdown.style.left = '16px';
+                updatesDropdown.style.right = '16px';
+                updatesDropdown.style.width = 'auto';
+                updatesDropdown.style.maxHeight = dropdownHeight + 'px';
+                updatesDropdown.style.position = 'fixed';
+            } else {
+                updatesDropdown.style.top = '';
+                updatesDropdown.style.left = '';
+                updatesDropdown.style.right = '';
+                updatesDropdown.style.width = '';
+                updatesDropdown.style.maxHeight = '';
+                updatesDropdown.style.position = '';
+            }
+            
+            updatesDropdown.classList.add('open');
+            updatesBtn.classList.add('active');
         });
 
         collectionBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             const isOpen = collectionDropdown.classList.contains('open');
             
-            if (!isOpen) {
-                const isMobile = window.innerWidth < 768;
-                if (isMobile) {
-                    const btnRect = collectionBtn.getBoundingClientRect();
-                    const dropdownHeight = Math.min(600, window.innerHeight - btnRect.bottom - 32);
-                    collectionDropdown.style.bottom = (window.innerHeight - btnRect.bottom + 8) + 'px';
-                    collectionDropdown.style.left = '16px';
-                    collectionDropdown.style.right = '16px';
-                    collectionDropdown.style.width = 'auto';
-                    collectionDropdown.style.maxHeight = dropdownHeight + 'px';
-                    collectionDropdown.style.position = 'fixed';
-                } else {
-                    collectionDropdown.style.bottom = '';
-                    collectionDropdown.style.left = '';
-                    collectionDropdown.style.right = '';
-                    collectionDropdown.style.width = '';
-                    collectionDropdown.style.maxHeight = '';
-                    collectionDropdown.style.position = '';
-                }
+            if (isOpen) {
+                closeCollectionDropdown();
+                return;
             }
             
-            collectionDropdown.classList.toggle('open');
-            collectionBtn.classList.toggle('active');
+            // 🔥 Закрываем обновления, если открыты
+            closeUpdatesDropdown();
+            
+            positionCollectionDropdown();
+            
+            collectionDropdown.classList.add('open');
+            collectionBtn.classList.add('active');
         });
 
         document.addEventListener('click', (e) => {
             if (!e.target.closest('.custom-select-wrapper')) closeMonthDropdown();
             if (!e.target.closest('.search-container') && !e.target.closest('.search-dropdown')) closeDropdown();
             if (!e.target.closest('.updates-btn') && !e.target.closest('.updates-dropdown')) {
-                updatesDropdown.classList.remove('open');
-                updatesBtn.classList.remove('active');
+                closeUpdatesDropdown();
             }
             if (!e.target.closest('.collection-btn') && !e.target.closest('.collection-dropdown')) {
-                collectionDropdown.classList.remove('open');
-                collectionBtn.classList.remove('active');
+                closeCollectionDropdown();
             }
         });
 
@@ -2270,8 +2280,7 @@
                         selectedAiringKey = null;
                         selectedVoiceKey = null;
                         selectedDubKey = null;
-                        updatesDropdown.classList.remove('open');
-                        updatesBtn.classList.remove('active');
+                        closeUpdatesDropdown();
                         scrollToCell(dateStr, series);
                     }
                 });
@@ -2380,9 +2389,8 @@
                     
                     if (lastEvent && lastEvent._parsedDate) {
                         const dateStr = formatDateDMY(lastEvent._parsedDate);
+                        closeCollectionDropdown();
                         scrollToCell(dateStr, seriesName);
-                        collectionDropdown.classList.remove('open');
-                        collectionBtn.classList.remove('active');
                     }
                 });
             });
@@ -3070,6 +3078,8 @@
         window.addEventListener('resize', () => {
             clearTimeout(resizeTimer);
             resizeTimer = setTimeout(() => {
+                // 🔥 Пере-позиционируем коллекцию, если она открыта
+                if (collectionDropdown.classList.contains('open')) positionCollectionDropdown();
                 if (allEvents.length > 0) renderView();
             }, 250);
         });
