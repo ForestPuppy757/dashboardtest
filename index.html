@@ -755,7 +755,7 @@
             transition: max-height 0.3s ease;
         }
         .collection-translator.expanded .collection-series-list {
-            max-height: 500px;
+            max-height: 2000px;
             margin-top: 8px;
         }
         
@@ -767,7 +767,6 @@
             background: rgba(15, 23, 42, 0.5);
             border: 1px solid rgba(148, 163, 184, 0.1);
             border-radius: 6px;
-            margin-bottom: 6px;
             cursor: pointer;
             transition: all 0.2s;
         }
@@ -786,12 +785,23 @@
         .collection-series-status.ended { background: #a855f7; box-shadow: 0 0 8px #a855f7; }
         .collection-series-name { flex: 1; font-size: 13px; color: #e2e8f0; }
         .collection-series-episode { font-size: 11px; color: #94a3b8; }
+        
+        /* 🔥 Обёртка для сериала + заметок */
+        .collection-series-wrapper {
+            margin-bottom: 6px;
+        }
+        .collection-series-wrapper .collection-series-item {
+            margin-bottom: 0;
+        }
         .collection-series-note {
             font-size: 11px;
             color: #fdba74;
             font-style: italic;
             margin-top: 4px;
-            padding-left: 16px;
+            padding: 4px 12px 4px 28px;
+            background: rgba(249, 115, 22, 0.08);
+            border-left: 2px solid rgba(249, 115, 22, 0.3);
+            border-radius: 0 6px 6px 0;
         }
     </style>
 </head>
@@ -933,7 +943,6 @@
             'https://thingproxy.freeboard.io/fetch/' + CONFIG.csvUrl
         ];
 
-        // 🔥 Динамически загружаемые данные переводчиков
         let TRANSLATORS = null;
 
         let allEvents = [];
@@ -1216,10 +1225,10 @@
             setTimeout(() => scrollToToday(), 300);
         }
 
-        // 🔥 Динамическая загрузка данных переводчиков
+        // 🔥 Загрузка данных переводчиков
         function loadTranslatorsData() {
             if (typeof google === 'undefined' || !google.script || !google.script.run) {
-                // Локальный режим (GitHub Pages) — используем пустые данные
+                console.log('🔍 google.script.run недоступен — локальный режим');
                 TRANSLATORS = {
                     sabina: { name: 'Сабина', channel: 'https://t.me/turkdizionline', channelName: 'Канал Сабины в телеграм', series: [] },
                     getDizi: { name: 'GET DIZI', group: 'https://vk.com/turkiee', groupName: 'Группа GET DIZI в ВК', translators: [
@@ -1234,19 +1243,26 @@
                 return;
             }
             
+            console.log('🔍 Запрос данных переводчиков через google.script.run...');
+            
             google.script.run
                 .withSuccessHandler(function(data) {
-                    if (data && data.error) {
-                        console.error('Ошибка загрузки данных переводчиков:', data.error);
-                        collectionContent.innerHTML = '<div class="updates-dropdown-empty">Ошибка: ' + data.error + '</div>';
+                    console.log('🔍 Ответ от getTranslatorsData:', data);
+                    if (!data) {
+                        collectionContent.innerHTML = '<div class="updates-dropdown-empty">Сервер вернул пустой ответ</div>';
+                        return;
+                    }
+                    if (data.error) {
+                        console.error('Ошибка загрузки:', data.error);
+                        collectionContent.innerHTML = '<div class="updates-dropdown-empty">Ошибка: ' + escapeHtml(data.error) + '</div>';
                         return;
                     }
                     TRANSLATORS = data;
                     renderCollection();
                 })
                 .withFailureHandler(function(error) {
-                    console.error('Ошибка при вызове getTranslatorsData:', error);
-                    collectionContent.innerHTML = '<div class="updates-dropdown-empty">Не удалось загрузить коллекцию</div>';
+                    console.error('❌ Ошибка вызова getTranslatorsData:', error);
+                    collectionContent.innerHTML = '<div class="updates-dropdown-empty">Не удалось загрузить коллекцию: ' + escapeHtml(String(error)) + '</div>';
                 })
                 .getTranslatorsData();
         }
@@ -2275,9 +2291,21 @@
             });
         }
 
+        // 🔥 Рендер Турецкой коллекции с проверкой данных
         function renderCollection() {
             if (!TRANSLATORS) {
                 collectionContent.innerHTML = '<div class="updates-dropdown-empty">Загрузка коллекции...</div>';
+                return;
+            }
+            
+            // Проверка: есть ли хоть какие-то данные
+            const hasAnyData = 
+                (TRANSLATORS.sabina && TRANSLATORS.sabina.series && TRANSLATORS.sabina.series.length > 0) ||
+                (TRANSLATORS.getDizi && TRANSLATORS.getDizi.translators && TRANSLATORS.getDizi.translators.some(t => t.series && t.series.length > 0)) ||
+                (TRANSLATORS.ulker && TRANSLATORS.ulker.series && TRANSLATORS.ulker.series.length > 0);
+            
+            if (!hasAnyData) {
+                collectionContent.innerHTML = '<div class="updates-dropdown-empty">Коллекция пуста. Проверьте, что в столбце H таблицы указаны имена: Сабина, Улькер, Пакиза, Сюзанна, Сама, Фидан.</div>';
                 return;
             }
             
@@ -2336,10 +2364,6 @@
                 html += `</div></div></div>`;
             }
             
-            if (html === '') {
-                html = '<div class="updates-dropdown-empty">Коллекция пуста. Добавьте переводчиков в столбец H таблицы.</div>';
-            }
-            
             collectionContent.innerHTML = html;
             
             collectionContent.querySelectorAll('.collection-translator').forEach(translator => {
@@ -2362,6 +2386,7 @@
             });
         }
 
+        // 🔥 Рендер элемента сериала с заметками о заменах
         function renderCollectionSeriesItem(s) {
             const statusClass = s.status === 'airing' ? 'airing' : s.status === 'new-season' ? 'new-season' : 'ended';
             const lastEp = s.lastEpisode ? `С${s.lastEpisode.season} С${s.lastEpisode.episode}` : '';
@@ -2370,15 +2395,18 @@
             let notesHtml = '';
             if (s.notes && s.notes.length > 0) {
                 notesHtml = s.notes.map(n => 
-                    `<div class="collection-series-note">${n.text}</div>`
+                    `<div class="collection-series-note">${escapeHtml(n.text)}</div>`
                 ).join('');
             }
             
-            return `<div class="collection-series-item" data-series="${escapeHtml(s.name)}" data-date="${dateStr}">
-                <div class="collection-series-status ${statusClass}"></div>
-                <div class="collection-series-name">${escapeHtml(s.name)}</div>
-                ${lastEp ? `<div class="collection-series-episode">${lastEp}</div>` : ''}
-            </div>${notesHtml}`;
+            return `<div class="collection-series-wrapper">
+                <div class="collection-series-item" data-series="${escapeHtml(s.name)}" data-date="${dateStr}">
+                    <div class="collection-series-status ${statusClass}"></div>
+                    <div class="collection-series-name">${escapeHtml(s.name)}</div>
+                    ${lastEp ? `<div class="collection-series-episode">${lastEp}</div>` : ''}
+                </div>
+                ${notesHtml}
+            </div>`;
         }
 
         function parseFilterValue(value) {
