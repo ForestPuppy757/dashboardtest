@@ -645,8 +645,6 @@
         .collection-btn.active { border-color: rgba(239, 68, 68, 0.6); box-shadow: 0 0 15px rgba(239, 68, 68, 0.3); }
         
         .collection-dropdown-wrapper { position: relative; }
-        /* 🔥 Позиционирование коллекции управляется через JS (position: fixed),
-           правый край выравнивается с правым краем календаря */
         .collection-dropdown {
             position: fixed;
             top: 0;
@@ -706,12 +704,8 @@
             background: rgba(30, 41, 59, 0.8);
             border-color: rgba(148, 163, 184, 0.3);
         }
-        .collection-link .link-icon {
-            font-size: 16px;
-        }
-        .collection-link .link-text {
-            flex: 1;
-        }
+        .collection-link .link-icon { font-size: 16px; }
+        .collection-link .link-text { flex: 1; }
         .collection-link .link-platform {
             font-size: 11px;
             color: #94a3b8;
@@ -790,15 +784,8 @@
         .collection-series-status.airing { background: #10b981; box-shadow: 0 0 8px #10b981; }
         .collection-series-status.new-season { background: #3b82f6; box-shadow: 0 0 8px #3b82f6; }
         .collection-series-status.ended { background: #a855f7; box-shadow: 0 0 8px #a855f7; }
-        .collection-series-name {
-            flex: 1;
-            font-size: 13px;
-            color: #e2e8f0;
-        }
-        .collection-series-episode {
-            font-size: 11px;
-            color: #94a3b8;
-        }
+        .collection-series-name { flex: 1; font-size: 13px; color: #e2e8f0; }
+        .collection-series-episode { font-size: 11px; color: #94a3b8; }
         .collection-series-note {
             font-size: 11px;
             color: #fdba74;
@@ -819,11 +806,8 @@
                 </div>
                 
                 <div class="flex flex-row items-center gap-3">
-                    <!-- 🔥 Кнопка Турецкой коллекции с иконкой 🌩️ -->
                     <div class="collection-dropdown-wrapper">
-                        <button class="collection-btn" id="collection-btn" title="Турецкая коллекция">
-                            🌩️
-                        </button>
+                        <button class="collection-btn" id="collection-btn" title="Турецкая коллекция">🌩️</button>
                         <div class="collection-dropdown" id="collection-dropdown">
                             <div class="collection-header">💎 Турецкая коллекция</div>
                             <div id="collection-content"></div>
@@ -949,31 +933,8 @@
             'https://thingproxy.freeboard.io/fetch/' + CONFIG.csvUrl
         ];
 
-        const TRANSLATORS = {
-            sabina: {
-                name: 'Сабина',
-                channel: 'https://t.me/turkdizionline',
-                channelName: 'Канал Сабины в телеграм',
-                series: []
-            },
-            getDizi: {
-                name: 'GET DIZI',
-                group: 'https://vk.com/turkiee',
-                groupName: 'Группа GET DIZI в ВК',
-                translators: [
-                    { name: 'Пакиза', series: [] },
-                    { name: 'Сюзанна', series: [] },
-                    { name: 'Сама', series: [] },
-                    { name: 'Фидан', series: [] }
-                ]
-            },
-            ulker: {
-                name: 'Улькер',
-                channel: 'https://t.me/ulkeriye',
-                channelName: 'Канал Улькер в телеграм',
-                series: []
-            }
-        };
+        // 🔥 Динамически загружаемые данные переводчиков
+        let TRANSLATORS = null;
 
         let allEvents = [];
         let uniqueSeries = [];
@@ -1039,7 +1000,6 @@
             const matrix = [];
             for (let i = 0; i <= b.length; i++) matrix[i] = [i];
             for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
-            
             for (let i = 1; i <= b.length; i++) {
                 for (let j = 1; j <= a.length; j++) {
                     if (b.charAt(i - 1) === a.charAt(j - 1)) {
@@ -1076,7 +1036,6 @@
             if (dateStr instanceof Date) return isNaN(dateStr.getTime()) ? null : dateStr;
             const str = String(dateStr).trim();
             if (!str) return null;
-            
             let match = str.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
             if (match) {
                 const day = parseInt(match[1], 10), month = parseInt(match[2], 10) - 1, year = parseInt(match[3], 10);
@@ -1252,9 +1211,44 @@
             
             populateMonthFilter();
             renderUpdates();
-            renderCollection();
+            loadTranslatorsData();
             renderView();
             setTimeout(() => scrollToToday(), 300);
+        }
+
+        // 🔥 Динамическая загрузка данных переводчиков
+        function loadTranslatorsData() {
+            if (typeof google === 'undefined' || !google.script || !google.script.run) {
+                // Локальный режим (GitHub Pages) — используем пустые данные
+                TRANSLATORS = {
+                    sabina: { name: 'Сабина', channel: 'https://t.me/turkdizionline', channelName: 'Канал Сабины в телеграм', series: [] },
+                    getDizi: { name: 'GET DIZI', group: 'https://vk.com/turkiee', groupName: 'Группа GET DIZI в ВК', translators: [
+                        { name: 'Пакиза', series: [] },
+                        { name: 'Сюзанна', series: [] },
+                        { name: 'Сама', series: [] },
+                        { name: 'Фидан', series: [] }
+                    ]},
+                    ulker: { name: 'Улькер', channel: 'https://t.me/ulkeriye', channelName: 'Канал Улькер в телеграм', series: [] }
+                };
+                renderCollection();
+                return;
+            }
+            
+            google.script.run
+                .withSuccessHandler(function(data) {
+                    if (data && data.error) {
+                        console.error('Ошибка загрузки данных переводчиков:', data.error);
+                        collectionContent.innerHTML = '<div class="updates-dropdown-empty">Ошибка: ' + data.error + '</div>';
+                        return;
+                    }
+                    TRANSLATORS = data;
+                    renderCollection();
+                })
+                .withFailureHandler(function(error) {
+                    console.error('Ошибка при вызове getTranslatorsData:', error);
+                    collectionContent.innerHTML = '<div class="updates-dropdown-empty">Не удалось загрузить коллекцию</div>';
+                })
+                .getTranslatorsData();
         }
 
         function showLoadError(err) {
@@ -1398,7 +1392,6 @@
             else openMonthDropdown();
         });
 
-        // 🔥 Функции закрытия dropdown-ов (для взаимной эксклюзивности)
         function closeUpdatesDropdown() {
             updatesDropdown.classList.remove('open');
             updatesBtn.classList.remove('active');
@@ -1408,7 +1401,6 @@
             collectionBtn.classList.remove('active');
         }
 
-        // 🔥 Позиционирование dropdown коллекции: правый край вровень с правым краем календаря
         function positionCollectionDropdown() {
             const btnRect = collectionBtn.getBoundingClientRect();
             const calSection = document.getElementById('schedule-section');
@@ -1417,7 +1409,6 @@
             
             collectionDropdown.style.position = 'fixed';
             collectionDropdown.style.top = (btnRect.bottom + 8) + 'px';
-            // Правый край dropdown = правый край календаря
             collectionDropdown.style.right = (window.innerWidth - calRect.right) + 'px';
             collectionDropdown.style.left = 'auto';
             collectionDropdown.style.width = 'auto';
@@ -1435,7 +1426,6 @@
                 return;
             }
             
-            // 🔥 Закрываем коллекцию, если открыта
             closeCollectionDropdown();
             
             const isMobile = window.innerWidth < 768;
@@ -1470,9 +1460,7 @@
                 return;
             }
             
-            // 🔥 Закрываем обновления, если открыты
             closeUpdatesDropdown();
-            
             positionCollectionDropdown();
             
             collectionDropdown.classList.add('open');
@@ -2288,9 +2276,14 @@
         }
 
         function renderCollection() {
+            if (!TRANSLATORS) {
+                collectionContent.innerHTML = '<div class="updates-dropdown-empty">Загрузка коллекции...</div>';
+                return;
+            }
+            
             let html = '';
             
-            if (TRANSLATORS.sabina.series.length > 0) {
+            if (TRANSLATORS.sabina && TRANSLATORS.sabina.series.length > 0) {
                 html += `<div class="collection-section">`;
                 html += `<a href="${TRANSLATORS.sabina.channel}" target="_blank" class="collection-link">
                     <span class="link-icon">✈️</span>
@@ -2301,18 +2294,12 @@
                     <div class="collection-translator-name">${TRANSLATORS.sabina.name}</div>
                     <div class="collection-series-list">`;
                 TRANSLATORS.sabina.series.forEach(s => {
-                    const statusClass = s.status === 'airing' ? 'airing' : s.status === 'new-season' ? 'new-season' : 'ended';
-                    const lastEp = s.lastEpisode ? `С${s.lastEpisode.season} С${s.lastEpisode.episode}` : '';
-                    html += `<div class="collection-series-item" data-series="${escapeHtml(s.name)}" data-season="${s.lastEpisode?.season || ''}" data-episode="${s.lastEpisode?.episode || ''}">
-                        <div class="collection-series-status ${statusClass}"></div>
-                        <div class="collection-series-name">${escapeHtml(s.name)}</div>
-                        ${lastEp ? `<div class="collection-series-episode">${lastEp}</div>` : ''}
-                    </div>`;
+                    html += renderCollectionSeriesItem(s);
                 });
                 html += `</div></div></div>`;
             }
             
-            if (TRANSLATORS.getDizi.translators.some(t => t.series.length > 0)) {
+            if (TRANSLATORS.getDizi && TRANSLATORS.getDizi.translators.some(t => t.series.length > 0)) {
                 html += `<div class="collection-section">`;
                 html += `<a href="${TRANSLATORS.getDizi.group}" target="_blank" class="collection-link">
                     <span class="link-icon">✈️</span>
@@ -2325,13 +2312,7 @@
                             <div class="collection-translator-name">${t.name}</div>
                             <div class="collection-series-list">`;
                         t.series.forEach(s => {
-                            const statusClass = s.status === 'airing' ? 'airing' : s.status === 'new-season' ? 'new-season' : 'ended';
-                            const lastEp = s.lastEpisode ? `С${s.lastEpisode.season} С${s.lastEpisode.episode}` : '';
-                            html += `<div class="collection-series-item" data-series="${escapeHtml(s.name)}" data-season="${s.lastEpisode?.season || ''}" data-episode="${s.lastEpisode?.episode || ''}">
-                                <div class="collection-series-status ${statusClass}"></div>
-                                <div class="collection-series-name">${escapeHtml(s.name)}</div>
-                                ${lastEp ? `<div class="collection-series-episode">${lastEp}</div>` : ''}
-                            </div>`;
+                            html += renderCollectionSeriesItem(s);
                         });
                         html += `</div></div>`;
                     }
@@ -2339,7 +2320,7 @@
                 html += `</div>`;
             }
             
-            if (TRANSLATORS.ulker.series.length > 0) {
+            if (TRANSLATORS.ulker && TRANSLATORS.ulker.series.length > 0) {
                 html += `<div class="collection-section">`;
                 html += `<a href="${TRANSLATORS.ulker.channel}" target="_blank" class="collection-link">
                     <span class="link-icon">✈️</span>
@@ -2350,19 +2331,13 @@
                     <div class="collection-translator-name">${TRANSLATORS.ulker.name}</div>
                     <div class="collection-series-list">`;
                 TRANSLATORS.ulker.series.forEach(s => {
-                    const statusClass = s.status === 'airing' ? 'airing' : s.status === 'new-season' ? 'new-season' : 'ended';
-                    const lastEp = s.lastEpisode ? `С${s.lastEpisode.season} С${s.lastEpisode.episode}` : '';
-                    html += `<div class="collection-series-item" data-series="${escapeHtml(s.name)}" data-season="${s.lastEpisode?.season || ''}" data-episode="${s.lastEpisode?.episode || ''}">
-                        <div class="collection-series-status ${statusClass}"></div>
-                        <div class="collection-series-name">${escapeHtml(s.name)}</div>
-                        ${lastEp ? `<div class="collection-series-episode">${lastEp}</div>` : ''}
-                    </div>`;
+                    html += renderCollectionSeriesItem(s);
                 });
                 html += `</div></div></div>`;
             }
             
             if (html === '') {
-                html = '<div class="updates-dropdown-empty">Коллекция пуста. Добавьте данные в TRANSLATORS.</div>';
+                html = '<div class="updates-dropdown-empty">Коллекция пуста. Добавьте переводчиков в столбец H таблицы.</div>';
             }
             
             collectionContent.innerHTML = html;
@@ -2378,22 +2353,32 @@
                 item.addEventListener('click', (e) => {
                     e.stopPropagation();
                     const seriesName = item.dataset.series;
-                    const season = item.dataset.season;
-                    const episode = item.dataset.episode;
-                    
-                    const lastEvent = allEvents.find(e => 
-                        e[CONFIG.colSeries].trim() === seriesName &&
-                        (!season || e[CONFIG.colSeason] === season) &&
-                        (!episode || e[CONFIG.colEpisode] === episode)
-                    );
-                    
-                    if (lastEvent && lastEvent._parsedDate) {
-                        const dateStr = formatDateDMY(lastEvent._parsedDate);
+                    const dateStr = item.dataset.date;
+                    if (dateStr && seriesName) {
                         closeCollectionDropdown();
                         scrollToCell(dateStr, seriesName);
                     }
                 });
             });
+        }
+
+        function renderCollectionSeriesItem(s) {
+            const statusClass = s.status === 'airing' ? 'airing' : s.status === 'new-season' ? 'new-season' : 'ended';
+            const lastEp = s.lastEpisode ? `С${s.lastEpisode.season} С${s.lastEpisode.episode}` : '';
+            const dateStr = s.lastEpisode?.date || '';
+            
+            let notesHtml = '';
+            if (s.notes && s.notes.length > 0) {
+                notesHtml = s.notes.map(n => 
+                    `<div class="collection-series-note">${n.text}</div>`
+                ).join('');
+            }
+            
+            return `<div class="collection-series-item" data-series="${escapeHtml(s.name)}" data-date="${dateStr}">
+                <div class="collection-series-status ${statusClass}"></div>
+                <div class="collection-series-name">${escapeHtml(s.name)}</div>
+                ${lastEp ? `<div class="collection-series-episode">${lastEp}</div>` : ''}
+            </div>${notesHtml}`;
         }
 
         function parseFilterValue(value) {
@@ -2667,7 +2652,6 @@
                     const dayName = dayNamesShort[dayIndex];
                     dayHeader.innerHTML = `${dayName ? `<span style="font-size: 12px; font-weight: 700; color: ${isTodayHighlight ? '#a78bfa' : (isWeekend ? 'rgba(167, 139, 250, 0.7)' : '#64748b')}">${dayName}</span>` : '<span></span>'}<span style="font-size: 14px; font-weight: 700; color: ${isTodayHighlight ? '#a78bfa' : '#cbd5e1'};">${day}</span>`;
                     cellEl.appendChild(dayHeader);
-                    // 🔥 Исправлено: затемнение только при режиме "Весь месяц"
                     if ((activeFilters.airing || activeFilters.voice || activeFilters.dub) && isPastDay && !isMobileView && calendarViewFilter === 'month') { 
                         cellEl.style.opacity = '0.2'; 
                         cellEl.style.filter = 'grayscale(0.6)'; 
@@ -3078,7 +3062,6 @@
         window.addEventListener('resize', () => {
             clearTimeout(resizeTimer);
             resizeTimer = setTimeout(() => {
-                // 🔥 Пере-позиционируем коллекцию, если она открыта
                 if (collectionDropdown.classList.contains('open')) positionCollectionDropdown();
                 if (allEvents.length > 0) renderView();
             }, 250);
