@@ -830,10 +830,10 @@
                 </div>
                 
                 <div class="flex flex-row items-center gap-3">
-                    <!-- 🔥 Новая кнопка Турецкой коллекции -->
+                    <!-- 🔥 Кнопка Турецкой коллекции с иконкой 🌩️ -->
                     <div class="collection-dropdown-wrapper">
                         <button class="collection-btn" id="collection-btn" title="Турецкая коллекция">
-                            🗃️
+                            🌩️
                         </button>
                         <div class="collection-dropdown" id="collection-dropdown">
                             <div class="collection-header">💎 Турецкая коллекция</div>
@@ -960,50 +960,29 @@
             'https://thingproxy.freeboard.io/fetch/' + CONFIG.csvUrl
         ];
 
-        // 🔥 Структура данных для Турецкой коллекции
-        // ЗАПОЛНИТЕ ЭТИ ДАННЫЕ согласно реальной информации
         const TRANSLATORS = {
             sabina: {
                 name: 'Сабина',
                 channel: 'https://t.me/turkdizionline',
                 channelName: 'Канал Сабины в телеграм',
-                series: [
-                    // Пример: { name: 'Название сериала', status: 'airing|new-season|ended', lastEpisode: { season: 1, episode: 10 } }
-                    // Замените на реальные данные
-                ]
+                series: []
             },
             getDizi: {
                 name: 'GET DIZI',
                 group: 'https://vk.com/turkiee',
                 groupName: 'Группа GET DIZI в ВК',
                 translators: [
-                    {
-                        name: 'Пакиза',
-                        series: [
-                            // Пример: { name: 'Название сериала', status: 'airing|new-season|ended', lastEpisode: { season: 1, episode: 10 } }
-                        ]
-                    },
-                    {
-                        name: 'Сюзанна',
-                        series: []
-                    },
-                    {
-                        name: 'Сама',
-                        series: []
-                    },
-                    {
-                        name: 'Фидан',
-                        series: []
-                    }
+                    { name: 'Пакиза', series: [] },
+                    { name: 'Сюзанна', series: [] },
+                    { name: 'Сама', series: [] },
+                    { name: 'Фидан', series: [] }
                 ]
             },
             ulker: {
                 name: 'Улькер',
                 channel: 'https://t.me/ulkeriye',
                 channelName: 'Канал Улькер в телеграм',
-                series: [
-                    // Пример: { name: 'Название сериала', status: 'airing|new-season|ended', lastEpisode: { season: 1, episode: 10 } }
-                ]
+                series: []
             }
         };
 
@@ -1459,7 +1438,6 @@
             updatesBtn.classList.toggle('active');
         });
 
-        // 🔥 Обработчик для Турецкой коллекции
         collectionBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             const isOpen = collectionDropdown.classList.contains('open');
@@ -2022,7 +2000,6 @@
                         </div>`;
                     }).join('')}</div>`;
                 } else {
-                    // 🔥 Исправленная формулировка
                     html += `<div class="filter-subblock-empty">Уже ничего не ждём, а слушаем любимые голоса</div>`;
                 }
                 html += `</div>`;
@@ -2039,7 +2016,6 @@
                         </div>`;
                     }).join('')}</div>`;
                 } else {
-                    // 🔥 Исправленная формулировка
                     html += `<div class="filter-subblock-empty">На этой неделе не было новых серий</div>`;
                 }
                 html += `</div>`;
@@ -2302,11 +2278,9 @@
             });
         }
 
-        // 🔥 Рендер Турецкой коллекции
         function renderCollection() {
             let html = '';
             
-            // Секция Сабины
             if (TRANSLATORS.sabina.series.length > 0) {
                 html += `<div class="collection-section">`;
                 html += `<a href="${TRANSLATORS.sabina.channel}" target="_blank" class="collection-link">
@@ -2329,7 +2303,6 @@
                 html += `</div></div></div>`;
             }
             
-            // Секция GET DIZI
             if (TRANSLATORS.getDizi.translators.some(t => t.series.length > 0)) {
                 html += `<div class="collection-section">`;
                 html += `<a href="${TRANSLATORS.getDizi.group}" target="_blank" class="collection-link">
@@ -2357,7 +2330,6 @@
                 html += `</div>`;
             }
             
-            // Секция Улькер
             if (TRANSLATORS.ulker.series.length > 0) {
                 html += `<div class="collection-section">`;
                 html += `<a href="${TRANSLATORS.ulker.channel}" target="_blank" class="collection-link">
@@ -2386,7 +2358,6 @@
             
             collectionContent.innerHTML = html;
             
-            // Обработчики для accordion
             collectionContent.querySelectorAll('.collection-translator').forEach(translator => {
                 translator.addEventListener('click', (e) => {
                     e.stopPropagation();
@@ -2394,7 +2365,6 @@
                 });
             });
             
-            // Обработчики для клика на сериал
             collectionContent.querySelectorAll('.collection-series-item').forEach(item => {
                 item.addEventListener('click', (e) => {
                     e.stopPropagation();
@@ -2402,7 +2372,6 @@
                     const season = item.dataset.season;
                     const episode = item.dataset.episode;
                     
-                    // Находим последнюю серию этого сериала в allEvents
                     const lastEvent = allEvents.find(e => 
                         e[CONFIG.colSeries].trim() === seriesName &&
                         (!season || e[CONFIG.colSeason] === season) &&
@@ -2690,7 +2659,11 @@
                     const dayName = dayNamesShort[dayIndex];
                     dayHeader.innerHTML = `${dayName ? `<span style="font-size: 12px; font-weight: 700; color: ${isTodayHighlight ? '#a78bfa' : (isWeekend ? 'rgba(167, 139, 250, 0.7)' : '#64748b')}">${dayName}</span>` : '<span></span>'}<span style="font-size: 14px; font-weight: 700; color: ${isTodayHighlight ? '#a78bfa' : '#cbd5e1'};">${day}</span>`;
                     cellEl.appendChild(dayHeader);
-                    if ((activeFilters.airing || activeFilters.voice || activeFilters.dub) && isPastDay && !isMobileView) { cellEl.style.opacity = '0.2'; cellEl.style.filter = 'grayscale(0.6)'; }
+                    // 🔥 Исправлено: затемнение только при режиме "Весь месяц"
+                    if ((activeFilters.airing || activeFilters.voice || activeFilters.dub) && isPastDay && !isMobileView && calendarViewFilter === 'month') { 
+                        cellEl.style.opacity = '0.2'; 
+                        cellEl.style.filter = 'grayscale(0.6)'; 
+                    }
                     applyCellHighlighting(cellEl, dayEvents, dateObj, false, isToday);
                     grid.appendChild(cellEl);
                 }
