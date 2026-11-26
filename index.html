@@ -1,0 +1,3105 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Дашборд трансляций</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        body { 
+            font-family: 'Inter', sans-serif; 
+            background: #0a0e27;
+            background-image: 
+                radial-gradient(circle at 20% 50%, rgba(120, 119, 198, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 80% 80%, rgba(255, 119, 198, 0.08) 0%, transparent 50%);
+            min-height: 100vh;
+            color: #e2e8f0;
+            margin: 0;
+            padding: 16px;
+            overflow-x: hidden;
+        }
+        @media (min-width: 768px) { body { padding: 32px; } }
+        
+        .event-card { 
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            background: rgba(30, 41, 59, 0.6);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(148, 163, 184, 0.1);
+            cursor: pointer;
+        }
+        .event-card:hover { 
+            transform: translateY(-4px) scale(1.02); 
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+            border-color: rgba(148, 163, 184, 0.3);
+            z-index: 10;
+        }
+        
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; flex-shrink: 0; }
+        .dot-active { background-color: #10b981; box-shadow: 0 0 12px #10b981, 0 0 20px rgba(16, 185, 129, 0.5); }
+        .dot-past { background-color: #065f46; box-shadow: 0 0 8px #065f46, 0 0 14px rgba(6, 95, 70, 0.4); }
+        .dot-moved { background-color: #ef4444; box-shadow: 0 0 12px #ef4444, 0 0 20px rgba(239, 68, 68, 0.5); }
+        .dot-moved-past { background-color: #7f1d1d; box-shadow: 0 0 8px #7f1d1d, 0 0 14px rgba(127, 29, 29, 0.4); }
+        .dot-special { background-color: #fbbf24; box-shadow: 0 0 15px #fbbf24, 0 0 25px rgba(251, 191, 36, 0.6); animation: pulse 2s infinite; }
+        .dot-special-past { background-color: #92400e; box-shadow: 0 0 8px #92400e, 0 0 14px rgba(146, 64, 14, 0.4); }
+        
+        .dot-active-today { 
+            background-color: #10b981; 
+            box-shadow: 0 0 15px #10b981, 0 0 30px rgba(16, 185, 129, 0.8);
+            animation: pulse-today 1.5s infinite;
+        }
+        .dot-moved-today { 
+            background-color: #ef4444; 
+            box-shadow: 0 0 15px #ef4444, 0 0 30px rgba(239, 68, 68, 0.8);
+            animation: pulse-today-red 1.5s infinite;
+        }
+        .dot-special-today { 
+            background-color: #fbbf24; 
+            box-shadow: 0 0 20px #fbbf24, 0 0 35px rgba(251, 191, 36, 0.9);
+            animation: pulse-today-yellow 1.5s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.8; transform: scale(1.1); }
+        }
+        @keyframes pulse-today {
+            0%, 100% { opacity: 1; transform: scale(1); box-shadow: 0 0 15px #10b981, 0 0 30px rgba(16, 185, 129, 0.8); }
+            50% { opacity: 0.9; transform: scale(1.15); box-shadow: 0 0 20px #10b981, 0 0 40px rgba(16, 185, 129, 1); }
+        }
+        @keyframes pulse-today-red {
+            0%, 100% { opacity: 1; transform: scale(1); box-shadow: 0 0 15px #ef4444, 0 0 30px rgba(239, 68, 68, 0.8); }
+            50% { opacity: 0.9; transform: scale(1.15); box-shadow: 0 0 20px #ef4444, 0 0 40px rgba(239, 68, 68, 1); }
+        }
+        @keyframes pulse-today-yellow {
+            0%, 100% { opacity: 1; transform: scale(1); box-shadow: 0 0 20px #fbbf24, 0 0 35px rgba(251, 191, 36, 0.9); }
+            50% { opacity: 0.9; transform: scale(1.15); box-shadow: 0 0 25px #fbbf24, 0 0 45px rgba(251, 191, 36, 1); }
+        }
+        
+        .faded-event { opacity: 0.35; }
+        .faded-event:hover { opacity: 0.55; }
+        .past-event { opacity: 0.7; }
+        .past-event:hover { opacity: 0.85; }
+        
+        .today-bg-active {
+            background: rgba(16, 185, 129, 0.15) !important;
+            border-color: rgba(16, 185, 129, 0.4) !important;
+        }
+        .today-bg-moved {
+            background: rgba(239, 68, 68, 0.15) !important;
+            border-color: rgba(239, 68, 68, 0.4) !important;
+        }
+        .today-bg-special {
+            background: rgba(251, 191, 36, 0.15) !important;
+            border-color: rgba(251, 191, 36, 0.4) !important;
+        }
+        
+        .glass-card {
+            background: rgba(15, 23, 42, 0.8);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(148, 163, 184, 0.1);
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        }
+        
+        .glow-text { text-shadow: 0 0 30px rgba(102, 126, 234, 0.8), 0 0 60px rgba(102, 126, 234, 0.4); }
+        .neon-border { box-shadow: 0 0 20px rgba(102, 126, 234, 0.3), inset 0 0 20px rgba(102, 126, 234, 0.1); }
+
+        .custom-select-wrapper { position: relative; width: 240px; min-width: 240px; }
+        .custom-select-trigger {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 12px 16px; background: rgba(30, 41, 59, 0.8);
+            border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 12px;
+            color: #e2e8f0; font-size: 14px; font-weight: 600; cursor: pointer;
+            transition: all 0.2s; user-select: none;
+            width: 240px; min-width: 240px;
+        }
+        .custom-select-trigger:hover { border-color: rgba(148, 163, 184, 0.4); background: rgba(30, 41, 59, 0.9); }
+        .custom-select-trigger.open {
+            border-color: #667eea; box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
+            border-bottom-left-radius: 0; border-bottom-right-radius: 0;
+        }
+        .custom-select-trigger .trigger-text { flex: 1; text-align: center; }
+        .custom-select-trigger .trigger-arrow {
+            width: 16px; height: 16px; color: #94a3b8;
+            transition: transform 0.3s ease; flex-shrink: 0;
+        }
+        .custom-select-trigger.open .trigger-arrow { transform: rotate(180deg); }
+
+        .custom-select-dropdown {
+            position: absolute; top: 100%; left: 0;
+            width: 240px; min-width: 240px;
+            background: rgba(15, 23, 42, 0.98); backdrop-filter: blur(16px);
+            border: 1px solid rgba(148, 163, 184, 0.2); border-top: none;
+            border-bottom-left-radius: 12px; border-bottom-right-radius: 12px;
+            max-height: 320px; overflow-y: auto; z-index: 1000;
+            display: none; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+        .custom-select-dropdown.open { display: block; animation: slideDown 0.25s ease; }
+        @keyframes slideDown {
+            from { opacity: 0; transform: translateY(-8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .custom-select-option {
+            padding: 10px 16px; color: #e2e8f0; font-size: 14px;
+            cursor: pointer; transition: background 0.15s;
+            border-bottom: 1px solid rgba(148, 163, 184, 0.08);
+            white-space: nowrap;
+            text-align: center;
+        }
+        .custom-select-option:last-child { border-bottom: none; }
+        .custom-select-option:hover { background: rgba(102, 126, 234, 0.15); }
+        .custom-select-option.selected {
+            background: linear-gradient(135deg, rgba(102, 126, 234, 0.3), rgba(118, 75, 162, 0.3));
+            color: white; font-weight: 600;
+        }
+        .custom-select-option.year-header {
+            color: #a78bfa; font-weight: 700; font-size: 13px; text-align: center;
+            padding: 10px 16px 6px; cursor: default; border-bottom: none; letter-spacing: 0.5px;
+            white-space: nowrap;
+        }
+        .custom-select-option.year-header:hover { background: transparent; }
+        .custom-select-option.all-years {
+            font-weight: 700; font-size: 15px; text-align: center;
+            padding: 12px 16px; color: #e2e8f0;
+            white-space: nowrap;
+        }
+        .custom-select-option.all-years:hover { background: rgba(102, 126, 234, 0.15); }
+
+        .custom-select-dropdown::-webkit-scrollbar { width: 6px; }
+        .custom-select-dropdown::-webkit-scrollbar-track { background: transparent; }
+        .custom-select-dropdown::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.3); border-radius: 3px; }
+        .custom-select-dropdown::-webkit-scrollbar-thumb:hover { background: rgba(148, 163, 184, 0.5); }
+
+        .updates-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 44px;
+            height: 44px;
+            background: rgba(30, 41, 59, 0.8);
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            border-radius: 12px;
+            color: #e2e8f0;
+            font-size: 20px;
+            cursor: pointer;
+            transition: all 0.2s;
+            position: relative;
+            flex-shrink: 0;
+        }
+        .updates-btn:hover { background: rgba(30, 41, 59, 0.9); border-color: rgba(148, 163, 184, 0.4); }
+        .updates-btn.active { border-color: #fbbf24; box-shadow: 0 0 15px rgba(251, 191, 36, 0.3); }
+        .updates-badge {
+            position: absolute; top: -6px; right: -6px;
+            background: #ef4444; color: white;
+            font-size: 11px; font-weight: 700;
+            padding: 2px 6px; border-radius: 10px;
+            min-width: 18px; text-align: center;
+            box-shadow: 0 2px 8px rgba(239, 68, 68, 0.4);
+        }
+
+        .updates-dropdown-wrapper { position: relative; }
+        .updates-dropdown {
+            position: absolute;
+            top: calc(100% + 8px);
+            right: 0;
+            width: 380px;
+            max-width: 90vw;
+            background: rgba(15, 23, 42, 0.98);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            z-index: 1000;
+            display: none;
+            max-height: 500px;
+            overflow-y: auto;
+        }
+        .updates-dropdown.open { display: block; animation: slideDown 0.25s ease; }
+        .updates-dropdown::-webkit-scrollbar { width: 6px; }
+        .updates-dropdown::-webkit-scrollbar-track { background: transparent; }
+        .updates-dropdown::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.3); border-radius: 3px; }
+        .updates-dropdown::-webkit-scrollbar-thumb:hover { background: rgba(148, 163, 184, 0.5); }
+
+        @media (max-width: 768px) {
+            .updates-dropdown {
+                right: auto;
+                width: auto;
+                max-width: none;
+                position: fixed;
+                top: auto;
+                left: 16px;
+                right: 16px;
+                max-height: 60vh;
+            }
+        }
+
+        .updates-dropdown-header {
+            padding: 16px;
+            border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+            font-weight: 700;
+            font-size: 15px;
+            color: #e2e8f0;
+            position: sticky;
+            top: 0;
+            background: rgba(15, 23, 42, 0.98);
+            backdrop-filter: blur(16px);
+            z-index: 10;
+        }
+        .updates-dropdown-empty { padding: 24px 16px; text-align: center; color: #64748b; font-size: 14px; }
+        .update-item { padding: 12px 16px; border-bottom: 1px solid rgba(148, 163, 184, 0.08); transition: background 0.15s; cursor: pointer; }
+        .update-item:last-child { border-bottom: none; }
+        .update-item:hover { background: rgba(102, 126, 234, 0.08); }
+        .update-type {
+            display: inline-block; padding: 3px 8px; border-radius: 6px;
+            font-size: 11px; font-weight: 600; margin-right: 8px; margin-bottom: 6px;
+        }
+        .update-type.voice { background: rgba(249, 115, 22, 0.15); color: #fdba74; border: 1px solid rgba(249, 115, 22, 0.3); }
+        .update-type.dub { background: rgba(59, 130, 246, 0.15); color: #93c5fd; border: 1px solid rgba(59, 130, 246, 0.3); }
+        .update-type.status { background: rgba(239, 68, 68, 0.15); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.3); }
+        .update-type.translator { background: rgba(168, 85, 247, 0.15); color: #d8b4fe; border: 1px solid rgba(168, 85, 247, 0.3); }
+        .update-series { font-weight: 600; color: #e2e8f0; font-size: 14px; margin-bottom: 4px; }
+        .update-detail { font-size: 13px; color: #94a3b8; line-height: 1.4; }
+        .update-date-label { font-size: 11px; color: #64748b; margin-top: 4px; font-style: italic; }
+        
+        .updates-day-divider {
+            display: flex;
+            align-items: center;
+            padding: 10px 16px 6px;
+            gap: 12px;
+        }
+        .updates-day-divider::before,
+        .updates-day-divider::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(148, 163, 184, 0.3), transparent);
+        }
+        .updates-day-divider-label {
+            font-size: 11px;
+            font-weight: 600;
+            color: #94a3b8;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            white-space: nowrap;
+        }
+        .updates-day-divider-label.today { color: #6ee7b7; }
+        .updates-day-divider-label.yesterday { color: #065f46; }
+
+        .month-title {
+            font-size: 1.5rem; font-weight: 700; color: #e2e8f0;
+            margin-bottom: 1rem; padding-left: 0.5rem; border-left: 4px solid #667eea;
+        }
+
+        .calendar-grid { display: grid !important; gap: 0.5rem; grid-template-columns: repeat(7, 1fr) !important; }
+        @media (max-width: 1024px) { .calendar-grid { grid-template-columns: repeat(4, 1fr) !important; } }
+        @media (max-width: 768px) { .calendar-grid { grid-template-columns: repeat(2, 1fr) !important; } }
+        @media (max-width: 380px) { .calendar-grid { grid-template-columns: 1fr !important; } }
+
+        .calendar-header { display: grid; grid-template-columns: repeat(7, 1fr); gap: 0.5rem; margin-bottom: 0.5rem; }
+        @media (max-width: 768px) { .calendar-header { display: none !important; } }
+        @media (max-width: 768px) { .prev-month-day, .next-month-day { display: none !important; } }
+        @media (max-width: 768px) {
+            .day-cell { min-height: 140px !important; padding: 0.5rem !important; }
+            .event-card { padding: 0.5rem !important; }
+            .event-title { font-size: 0.75rem !important; word-wrap: break-word; overflow-wrap: break-word; hyphens: auto; }
+            .event-info { font-size: 0.65rem !important; }
+            .empty-day-text { font-size: 0.6rem !important; }
+            .month-title { font-size: 1.25rem !important; margin-bottom: 0.75rem !important; }
+        }
+
+        .empty-day-icon { opacity: 0.25; transition: opacity 0.3s ease; }
+        .empty-day-icon:hover { opacity: 0.45; }
+        .empty-day-text { font-size: 0.55rem; color: #94a3b8; text-align: center; line-height: 1.3; opacity: 0.5; font-style: italic; }
+
+        .search-container { position: relative; width: 100%; }
+        .search-input-wrapper { position: relative; }
+        .search-input {
+            width: 100%; padding: 12px 80px 12px 40px;
+            background: rgba(30, 41, 59, 0.8); border: 1px solid rgba(148, 163, 184, 0.2);
+            border-radius: 12px; color: #e2e8f0; font-size: 14px; font-family: inherit; transition: all 0.2s;
+        }
+        .search-input:focus { outline: none; border-color: #667eea; box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2); }
+        .search-input::placeholder { color: #64748b; }
+        .search-icon { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: #64748b; pointer-events: none; }
+        .search-clear {
+            position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+            color: rgba(148, 163, 184, 0.6); cursor: pointer; font-size: 12px; font-weight: 500;
+            padding: 4px 8px; border-radius: 6px; transition: all 0.2s;
+            display: none; white-space: nowrap;
+        }
+        .search-clear.visible { display: block; }
+        .search-clear:hover { color: #e2e8f0; background: rgba(148, 163, 184, 0.15); }
+
+        .search-dropdown, .filter-list-container {
+            display: grid;
+            grid-template-rows: 0fr;
+            transition: grid-template-rows 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .search-dropdown.active, .filter-list-container.active {
+            grid-template-rows: 1fr;
+        }
+        .search-dropdown > div, .filter-list-container > div {
+            overflow: hidden;
+            min-height: 0;
+        }
+
+        .search-dropdown-inner {
+            position: relative;
+            background: rgba(15, 23, 42, 0.98);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            border-radius: 12px;
+            max-height: 240px;
+            overflow-y: auto;
+            z-index: 100;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.7);
+            margin-top: 8px;
+        }
+
+        .search-dropdown-item { padding: 10px 15px; cursor: pointer; font-size: 14px; color: #e2e8f0; border-bottom: 1px solid rgba(148, 163, 184, 0.1); transition: background 0.15s; }
+        .search-dropdown-item:last-child { border-bottom: none; }
+        .search-dropdown-item:hover { background: rgba(102, 126, 234, 0.2); }
+        .search-dropdown-empty { padding: 14px; text-align: center; color: #64748b; font-size: 13px; }
+        .search-dropdown-item.fuzzy-match { color: #fdba74; }
+        .search-dropdown-item.fuzzy-match::after {
+            content: ' (похоже)';
+            font-size: 11px;
+            color: #94a3b8;
+            font-style: italic;
+        }
+
+        .search-info-block {
+            margin-top: 12px;
+            padding: 14px 16px;
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            border-radius: 12px;
+            display: none;
+            animation: fadeIn 0.3s ease;
+        }
+        .search-info-block.visible { display: block; }
+        .search-info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        @media (max-width: 640px) { .search-info-grid { grid-template-columns: 1fr; } }
+        .search-info-card {
+            padding: 12px 14px;
+            background: rgba(30, 41, 59, 0.6);
+            border: 1px solid rgba(148, 163, 184, 0.15);
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
+        .search-info-card:hover {
+            background: rgba(30, 41, 59, 0.9);
+            border-color: rgba(102, 126, 234, 0.4);
+            transform: translateY(-1px);
+        }
+        .search-info-card.past { border-left: 3px solid rgba(148, 163, 184, 0.4); }
+        .search-info-card.next { border-left: 3px solid #10b981; }
+        .search-info-card.ended { border-left: 3px solid #a855f7; }
+        .search-info-card.season-end { border-left: 3px solid #3b82f6; }
+        .search-info-card-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: #94a3b8; margin-bottom: 4px; font-weight: 600; }
+        .search-info-card-series { font-size: 14px; font-weight: 700; color: #e2e8f0; margin-bottom: 2px; }
+        .search-info-card-meta { font-size: 12px; color: #94a3b8; }
+        .search-info-card-date { font-size: 12px; color: #cbd5e1; font-weight: 600; padding: 4px 10px; background: rgba(102, 126, 234, 0.15); border-radius: 6px; flex-shrink: 0; white-space: nowrap; }
+        .search-info-card.next .search-info-card-date { background: rgba(16, 185, 129, 0.15); color: #6ee7b7; }
+        .search-info-card.ended .search-info-card-date { background: rgba(168, 85, 247, 0.15); color: #d8b4fe; }
+        .search-info-card.season-end .search-info-card-date { background: rgba(59, 130, 246, 0.15); color: #93c5fd; }
+
+        .filter-btn {
+            position: relative; display: flex; align-items: center; gap: 8px;
+            padding: 10px 16px; background: rgba(30, 41, 59, 0.5);
+            border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 12px;
+            color: #94a3b8; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.3s ease; white-space: nowrap;
+        }
+        .filter-btn:hover { background: rgba(30, 41, 59, 0.8); }
+        .filter-btn.active { color: white; }
+        .filter-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+        
+        .filter-btn.airing { border-color: rgba(16, 185, 129, 0.3); }
+        .filter-btn.airing .filter-dot { background: #10b981; box-shadow: 0 0 10px #10b981, 0 0 18px rgba(16, 185, 129, 0.5); }
+        .filter-btn.airing.active { background: rgba(16, 185, 129, 0.15); border-color: rgba(16, 185, 129, 0.6); box-shadow: 0 0 15px rgba(16, 185, 129, 0.3); color: #6ee7b7; }
+        
+        .filter-btn.new-season { border-color: rgba(59, 130, 246, 0.3); }
+        .filter-btn.new-season .filter-dot { background: #3b82f6; box-shadow: 0 0 10px #3b82f6, 0 0 18px rgba(59, 130, 246, 0.5); }
+        .filter-btn.new-season.active { background: rgba(59, 130, 246, 0.15); border-color: rgba(59, 130, 246, 0.6); box-shadow: 0 0 15px rgba(59, 130, 246, 0.3); color: #93c5fd; }
+        
+        .filter-btn.ended { border-color: rgba(168, 85, 247, 0.3); }
+        .filter-btn.ended .filter-dot { background: #a855f7; box-shadow: 0 0 10px #a855f7, 0 0 18px rgba(168, 85, 247, 0.5); }
+        .filter-btn.ended.active { background: rgba(168, 85, 247, 0.15); border-color: rgba(168, 85, 247, 0.6); box-shadow: 0 0 15px rgba(168, 85, 247, 0.3); color: #d8b4fe; }
+
+        .filter-btn.voice { border-color: rgba(249, 115, 22, 0.3); }
+        .filter-btn.voice .filter-dot { background: #f97316; box-shadow: 0 0 10px #f97316, 0 0 18px rgba(249, 115, 22, 0.5); }
+        .filter-btn.voice.active { background: rgba(249, 115, 22, 0.15); border-color: rgba(249, 115, 22, 0.6); box-shadow: 0 0 15px rgba(249, 115, 22, 0.3); color: #fdba74; }
+        
+        .filter-btn.dub { border-color: rgba(236, 72, 153, 0.3); }
+        .filter-btn.dub .filter-dot { background: #ec4899; box-shadow: 0 0 10px #ec4899, 0 0 18px rgba(236, 72, 153, 0.5); }
+        .filter-btn.dub.active { background: rgba(236, 72, 153, 0.15); border-color: rgba(236, 72, 153, 0.6); box-shadow: 0 0 15px rgba(236, 72, 153, 0.3); color: #f9a8d4; }
+
+        .view-filters {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .view-filter-btn {
+            padding: 6px 14px;
+            background: rgba(30, 41, 59, 0.5);
+            border-radius: 10px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            white-space: nowrap;
+            color: #94a3b8;
+            font-family: inherit;
+        }
+        .view-filter-btn:hover { background: rgba(30, 41, 59, 0.8); }
+        .view-filter-btn.active { color: white; }
+
+        .view-filter-btn.week { border: 2px solid rgba(16, 185, 129, 0.5); }
+        .view-filter-btn.week.active {
+            background: rgba(16, 185, 129, 0.15);
+            border-color: rgba(16, 185, 129, 0.8);
+            box-shadow: 0 0 12px rgba(16, 185, 129, 0.4);
+            color: #6ee7b7;
+        }
+
+        .view-filter-btn.last-week { border: 2px solid rgba(59, 130, 246, 0.5); }
+        .view-filter-btn.last-week.active {
+            background: rgba(59, 130, 246, 0.15);
+            border-color: rgba(59, 130, 246, 0.8);
+            box-shadow: 0 0 12px rgba(59, 130, 246, 0.4);
+            color: #93c5fd;
+        }
+
+        .view-filter-btn.month { border: 2px solid rgba(168, 85, 247, 0.5); }
+        .view-filter-btn.month.active {
+            background: rgba(168, 85, 247, 0.15);
+            border-color: rgba(168, 85, 247, 0.8);
+            box-shadow: 0 0 12px rgba(168, 85, 247, 0.4);
+            color: #d8b4fe;
+        }
+
+        @media (max-width: 768px) {
+            .view-filters { justify-content: flex-start; }
+            .view-filter-btn { font-size: 11px; padding: 5px 10px; }
+        }
+
+        #filter-lists { display: flex; flex-direction: column; min-height: 0; }
+        .filter-list-container { margin-top: 0; padding-top: 4px; }
+        .filter-list-container.active { margin-top: 20px; overflow-y: auto; }
+        
+        .filter-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; padding-top: 4px; }
+        .filter-list-item {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 10px 14px; background: rgba(30, 41, 59, 0.5);
+            border: 1px solid rgba(148, 163, 184, 0.15); border-radius: 10px;
+            cursor: pointer; transition: all 0.2s; gap: 8px;
+        }
+        .filter-list-item:hover { background: rgba(30, 41, 59, 0.8); transform: translateY(-1px); }
+        
+        .filter-list-item.border-airing { border-color: rgba(16, 185, 129, 0.6); box-shadow: 0 0 8px rgba(16, 185, 129, 0.2); }
+        .filter-list-item.border-new-season { border-color: rgba(59, 130, 246, 0.6); box-shadow: 0 0 8px rgba(59, 130, 246, 0.2); }
+        .filter-list-item.border-ended { border-color: rgba(168, 85, 247, 0.6); box-shadow: 0 0 8px rgba(168, 85, 247, 0.2); }
+        .filter-list-item.border-voice { border-color: rgba(249, 115, 22, 0.5); box-shadow: 0 0 8px rgba(249, 115, 22, 0.15); }
+        .filter-list-item.border-voice:hover { border-color: rgba(249, 115, 22, 0.8); }
+        .filter-list-item.border-dub { border-color: rgba(236, 72, 153, 0.5); box-shadow: 0 0 8px rgba(236, 72, 153, 0.15); }
+        .filter-list-item.border-dub:hover { border-color: rgba(236, 72, 153, 0.8); }
+        .filter-list-item.selected-ended { border-color: rgba(168, 85, 247, 0.9) !important; box-shadow: 0 0 15px rgba(168, 85, 247, 0.5); background: rgba(168, 85, 247, 0.15); }
+        .filter-list-item.selected-new-season { border-color: rgba(59, 130, 246, 0.9) !important; box-shadow: 0 0 15px rgba(59, 130, 246, 0.5); background: rgba(59, 130, 246, 0.15); }
+        .filter-list-item.selected-airing { border-color: rgba(16, 185, 129, 0.9) !important; box-shadow: 0 0 15px rgba(16, 185, 129, 0.5); background: rgba(16, 185, 129, 0.15); }
+        .filter-list-item.selected-voice { border-color: rgba(249, 115, 22, 0.9) !important; box-shadow: 0 0 15px rgba(249, 115, 22, 0.5); background: rgba(249, 115, 22, 0.15); }
+        .filter-list-item.selected-dub { border-color: rgba(236, 72, 153, 0.9) !important; box-shadow: 0 0 15px rgba(236, 72, 153, 0.5); background: rgba(236, 72, 153, 0.15); }
+        
+        .filter-list-name { font-weight: 600; font-size: 14px; color: #e2e8f0; }
+        .filter-list-meta { font-size: 12px; color: #94a3b8; margin-top: 2px; }
+        .filter-list-date { font-size: 13px; color: #cbd5e1; font-weight: 500; padding: 4px 10px; background: rgba(102, 126, 234, 0.15); border-radius: 6px; flex-shrink: 0; }
+        .filter-list-item:hover .filter-list-date { background: rgba(102, 126, 234, 0.3); }
+        .filter-list-empty { text-align: center; padding: 20px; color: #64748b; font-size: 13px; grid-column: 1 / -1; }
+
+        .filter-subblock { padding-top: 4px; }
+        .filter-subblock + .filter-subblock { margin-top: 18px; }
+        .filter-subblock-title {
+            font-size: 12px; font-weight: 700; text-transform: uppercase;
+            letter-spacing: 0.06em; margin-bottom: 8px; padding-left: 2px;
+        }
+        .filter-subblock-title.voice { color: #fdba74; }
+        .filter-subblock-title.dub { color: #f9a8d4; }
+        .filter-subblock-empty {
+            text-align: center; padding: 14px; color: #64748b; font-size: 13px;
+            border: 1px dashed rgba(148, 163, 184, 0.2); border-radius: 10px;
+        }
+
+        .dimmed-cell { opacity: 0.2; filter: grayscale(0.6); }
+        .highlighted-cell { border-color: rgba(168, 85, 247, 0.6) !important; box-shadow: 0 0 15px rgba(168, 85, 247, 0.3); }
+        .highlighted-new-season-cell { border-color: rgba(59, 130, 246, 0.6) !important; box-shadow: 0 0 15px rgba(59, 130, 246, 0.3); }
+        .highlighted-event { border-color: rgba(168, 85, 247, 0.8) !important; background: rgba(168, 85, 247, 0.15) !important; }
+        .highlighted-new-season-event { border-color: rgba(59, 130, 246, 0.8) !important; background: rgba(59, 130, 246, 0.15) !important; }
+        .highlighted-airing-event { border-color: rgba(16, 185, 129, 0.8) !important; background: rgba(16, 185, 129, 0.15) !important; }
+        .highlighted-voice-event { border-color: rgba(249, 115, 22, 0.8) !important; background: rgba(249, 115, 22, 0.15) !important; }
+        .highlighted-dub-event { border-color: rgba(236, 72, 153, 0.8) !important; background: rgba(236, 72, 153, 0.15) !important; }
+        
+        .search-nearest-cell { border-color: rgba(16, 185, 129, 0.7) !important; box-shadow: 0 0 20px rgba(16, 185, 129, 0.4), inset 0 0 15px rgba(16, 185, 129, 0.1); }
+        .search-nearest-event { border-color: rgba(16, 185, 129, 0.8) !important; background: rgba(16, 185, 129, 0.15) !important; }
+
+        .new-season-empty-msg {
+            text-align: center; padding: 20px; margin-top: 16px; border-radius: 12px;
+            border: 1px dashed rgba(59, 130, 246, 0.4); background: rgba(59, 130, 246, 0.08);
+            display: none; animation: fadeIn 0.4s ease;
+        }
+        .new-season-empty-msg.visible { display: block; }
+
+        .novelty-wrapper { position: relative; display: inline-flex; align-items: center; }
+        .novelty-tooltip {
+            position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%);
+            background: rgba(251, 191, 36, 0.95); color: #1e1b4b; padding: 6px 12px; border-radius: 8px;
+            font-size: 11px; font-weight: 700; white-space: nowrap; pointer-events: none; opacity: 0;
+            transition: opacity 0.2s; z-index: 50; box-shadow: 0 4px 12px rgba(251, 191, 36, 0.4);
+        }
+        .novelty-tooltip::after {
+            content: ''; position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
+            border: 5px solid transparent; border-top-color: rgba(251, 191, 36, 0.95);
+        }
+        .novelty-wrapper:hover .novelty-tooltip, .novelty-wrapper.show-tooltip .novelty-tooltip { opacity: 1; }
+
+        .modal-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.85); backdrop-filter: blur(8px);
+            z-index: 2000; display: flex; align-items: center; justify-content: center;
+            opacity: 0; pointer-events: none; transition: opacity 0.3s ease; padding: 1rem;
+        }
+        .modal-overlay.active { opacity: 1; pointer-events: all; }
+
+        .flip-container { perspective: 1500px; width: 100%; max-width: 520px; min-height: 200px; max-height: 90vh; }
+        .flip-card { width: 100%; height: 100%; min-height: 200px; position: relative; transform-style: preserve-3d; transition: transform 0.8s cubic-bezier(0.4, 0, 0.2, 1); }
+        .flip-card.flipped { transform: rotateY(180deg); }
+        .flip-face {
+            position: absolute; width: 100%; min-height: 100%; backface-visibility: hidden; -webkit-backface-visibility: hidden;
+            border-radius: 24px; overflow: hidden; box-shadow: 0 25px 60px rgba(0, 0, 0, 0.7), 0 0 40px rgba(102, 126, 234, 0.3);
+        }
+        .flip-front { background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border: 1px solid rgba(102, 126, 234, 0.3); }
+        .flip-back { background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%); border: 1px solid rgba(168, 85, 247, 0.4); transform: rotateY(180deg); padding: 1.5rem 2rem; }
+
+        .close-btn {
+            position: absolute; top: 1rem; right: 1rem; width: 36px; height: 36px; border-radius: 50%;
+            background: rgba(239, 68, 68, 0.2); border: 1px solid rgba(239, 68, 68, 0.4); color: #fca5a5;
+            display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s; z-index: 10;
+        }
+        .close-btn:hover { background: rgba(239, 68, 68, 0.4); transform: rotate(90deg); }
+
+        .info-row { margin-bottom: 1rem; padding-bottom: 1rem; border-bottom: 1px solid rgba(148, 163, 184, 0.1); }
+        .info-row:last-child { border-bottom: none; }
+        .info-label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: #94a3b8; margin-bottom: 0.35rem; font-weight: 600; }
+        .info-value { font-size: 1rem; color: #e2e8f0; font-weight: 500; line-height: 1.5; }
+
+        .quote-box {
+            background: rgba(102, 126, 234, 0.08); border-left: 3px solid #667eea; border-radius: 0 12px 12px 0;
+            padding: 1rem 1.25rem; margin-top: 0.5rem; cursor: pointer; transition: all 0.2s ease; position: relative;
+        }
+        .quote-box:hover { background: rgba(102, 126, 234, 0.15); border-left-color: #a78bfa; }
+        .quote-box:active { transform: scale(0.99); }
+        .quote-box.copied { background: rgba(16, 185, 129, 0.15); border-left-color: #10b981; }
+        .quote-text { font-size: 0.95rem; color: #e2e8f0; line-height: 1.6; font-style: italic; white-space: pre-wrap; word-break: break-word; }
+        .copy-hint { font-size: 0.7rem; color: #94a3b8; margin-top: 0.5rem; display: flex; align-items: center; gap: 0.35rem; }
+        .copy-hint.copied { color: #10b981; }
+
+        .loading-banner {
+            text-align: center; padding: 24px; margin: 12px 0; border-radius: 12px;
+            background: rgba(102, 126, 234, 0.08); border: 1px solid rgba(102, 126, 234, 0.2);
+            color: #a5b4fc; font-size: 14px;
+        }
+        .loading-banner .spinner {
+            display: inline-block; width: 16px; height: 16px; margin-right: 10px;
+            border: 2px solid rgba(165, 180, 252, 0.3); border-top-color: #a5b4fc;
+            border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: middle;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        @media (max-width: 640px) { .flip-back { padding: 1.25rem 1.25rem 2rem; } }
+        
+        /* 🔥 Стили для Турецкой коллекции */
+        .collection-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 44px;
+            height: 44px;
+            background: rgba(30, 41, 59, 0.8);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            border-radius: 12px;
+            color: #e2e8f0;
+            font-size: 20px;
+            cursor: pointer;
+            transition: all 0.2s;
+            position: relative;
+            flex-shrink: 0;
+        }
+        .collection-btn:hover { background: rgba(30, 41, 59, 0.9); border-color: rgba(239, 68, 68, 0.5); }
+        .collection-btn.active { border-color: rgba(239, 68, 68, 0.6); box-shadow: 0 0 15px rgba(239, 68, 68, 0.3); }
+        
+        .collection-dropdown-wrapper { position: relative; }
+        .collection-dropdown {
+            position: absolute;
+            top: calc(100% + 8px);
+            left: 0;
+            width: 420px;
+            max-width: 90vw;
+            background: rgba(15, 23, 42, 0.98);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5), 0 0 20px rgba(239, 68, 68, 0.1);
+            z-index: 1000;
+            display: none;
+            max-height: 600px;
+            overflow-y: auto;
+        }
+        .collection-dropdown.open { display: block; animation: slideDown 0.25s ease; }
+        .collection-dropdown::-webkit-scrollbar { width: 6px; }
+        .collection-dropdown::-webkit-scrollbar-track { background: transparent; }
+        .collection-dropdown::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.3); border-radius: 3px; }
+        .collection-dropdown::-webkit-scrollbar-thumb:hover { background: rgba(148, 163, 184, 0.5); }
+        
+        @media (max-width: 768px) {
+            .collection-dropdown {
+                left: auto;
+                right: 0;
+                width: auto;
+                max-width: none;
+                position: fixed;
+                top: auto;
+                bottom: 16px;
+                max-height: 70vh;
+            }
+        }
+        
+        .collection-header {
+            padding: 16px;
+            border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+            font-weight: 700;
+            font-size: 16px;
+            color: #e2e8f0;
+            position: sticky;
+            top: 0;
+            background: rgba(15, 23, 42, 0.98);
+            backdrop-filter: blur(16px);
+            z-index: 10;
+        }
+        
+        .collection-section {
+            padding: 12px 16px;
+            border-bottom: 1px solid rgba(148, 163, 184, 0.08);
+        }
+        .collection-section:last-child { border-bottom: none; }
+        
+        .collection-link {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            background: rgba(30, 41, 59, 0.5);
+            border: 1px solid rgba(148, 163, 184, 0.15);
+            border-radius: 8px;
+            color: #e2e8f0;
+            text-decoration: none;
+            font-size: 13px;
+            transition: all 0.2s;
+            margin-bottom: 8px;
+        }
+        .collection-link:hover {
+            background: rgba(30, 41, 59, 0.8);
+            border-color: rgba(148, 163, 184, 0.3);
+        }
+        .collection-link .link-icon {
+            font-size: 16px;
+        }
+        .collection-link .link-text {
+            flex: 1;
+        }
+        .collection-link .link-platform {
+            font-size: 11px;
+            color: #94a3b8;
+            padding: 2px 8px;
+            background: rgba(102, 126, 234, 0.15);
+            border-radius: 4px;
+        }
+        
+        .collection-translator {
+            padding: 10px 12px;
+            background: rgba(30, 41, 59, 0.3);
+            border: 1px solid rgba(148, 163, 184, 0.1);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-bottom: 8px;
+        }
+        .collection-translator:hover {
+            background: rgba(30, 41, 59, 0.5);
+            border-color: rgba(148, 163, 184, 0.2);
+        }
+        .collection-translator.expanded {
+            border-color: rgba(102, 126, 234, 0.4);
+            background: rgba(30, 41, 59, 0.5);
+        }
+        .collection-translator-name {
+            font-weight: 600;
+            font-size: 14px;
+            color: #e2e8f0;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .collection-translator-name::after {
+            content: '▼';
+            font-size: 10px;
+            color: #94a3b8;
+            transition: transform 0.3s;
+        }
+        .collection-translator.expanded .collection-translator-name::after {
+            transform: rotate(180deg);
+        }
+        
+        .collection-series-list {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease;
+        }
+        .collection-translator.expanded .collection-series-list {
+            max-height: 500px;
+            margin-top: 8px;
+        }
+        
+        .collection-series-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            background: rgba(15, 23, 42, 0.5);
+            border: 1px solid rgba(148, 163, 184, 0.1);
+            border-radius: 6px;
+            margin-bottom: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .collection-series-item:hover {
+            background: rgba(15, 23, 42, 0.8);
+            border-color: rgba(148, 163, 184, 0.3);
+        }
+        .collection-series-status {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+        .collection-series-status.airing { background: #10b981; box-shadow: 0 0 8px #10b981; }
+        .collection-series-status.new-season { background: #3b82f6; box-shadow: 0 0 8px #3b82f6; }
+        .collection-series-status.ended { background: #a855f7; box-shadow: 0 0 8px #a855f7; }
+        .collection-series-name {
+            flex: 1;
+            font-size: 13px;
+            color: #e2e8f0;
+        }
+        .collection-series-episode {
+            font-size: 11px;
+            color: #94a3b8;
+        }
+        .collection-series-note {
+            font-size: 11px;
+            color: #fdba74;
+            font-style: italic;
+            margin-top: 4px;
+            padding-left: 16px;
+        }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+
+    <div class="max-w-7xl mx-auto">
+        <header class="mb-6">
+            <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                <div>
+                    <h1 class="text-3xl md:text-4xl font-extrabold text-white glow-text mb-2">🎬 Дашборд трансляций</h1>
+                    <p class="text-slate-400 text-lg">Мераба, дорогой друг</p>
+                </div>
+                
+                <div class="flex flex-row items-center gap-3">
+                    <!-- 🔥 Новая кнопка Турецкой коллекции -->
+                    <div class="collection-dropdown-wrapper">
+                        <button class="collection-btn" id="collection-btn" title="Турецкая коллекция">
+                            🗃️
+                        </button>
+                        <div class="collection-dropdown" id="collection-dropdown">
+                            <div class="collection-header">💎 Турецкая коллекция</div>
+                            <div id="collection-content"></div>
+                        </div>
+                    </div>
+                    
+                    <div class="custom-select-wrapper">
+                        <div class="custom-select-trigger" id="month-trigger">
+                            <span class="trigger-text" id="month-trigger-text">Загрузка...</span>
+                            <svg class="trigger-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                <polyline points="6 9 12 15 18 9"></polyline>
+                            </svg>
+                        </div>
+                        <div class="custom-select-dropdown" id="month-dropdown"></div>
+                        <input type="hidden" id="month-filter" value="all">
+                    </div>
+                    
+                    <div class="updates-dropdown-wrapper" style="position: relative;">
+                        <button class="updates-btn" id="updates-btn" title="Обновления сегодня">
+                            ⚡
+                            <span class="updates-badge" id="updates-badge" style="display: none;">0</span>
+                        </button>
+                        <div class="updates-dropdown" id="updates-dropdown">
+                            <div class="updates-dropdown-header">🫖 Стамбульский вестник</div>
+                            <div id="updates-list"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <div class="glass-card rounded-2xl p-4 mb-6">
+            <div class="flex flex-col md:flex-row gap-3">
+                <div class="search-container flex-1">
+                    <div class="search-input-wrapper">
+                        <svg class="search-icon w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                        </svg>
+                        <input type="text" id="series-search" class="search-input" placeholder="Поиск сериала...">
+                        <span class="search-clear" id="search-clear" title="Очистить">✕ Очистить</span>
+                    </div>
+                </div>
+                
+                <div class="flex flex-wrap gap-2">
+                    <button class="filter-btn airing" data-filter="airing"><span class="filter-dot"></span>В эфире</button>
+                    <button class="filter-btn new-season" data-filter="newSeason"><span class="filter-dot"></span>Ждём новый сезон</button>
+                    <button class="filter-btn ended" data-filter="ended"><span class="filter-dot"></span>Сериал завершён</button>
+                    <button class="filter-btn voice" data-filter="voice"><span class="filter-dot"></span>AlisaDirilis</button>
+                    <button class="filter-btn dub" data-filter="dub"><span class="filter-dot"></span>Дубляж</button>
+                </div>
+            </div>
+            
+            <div id="search-info-block" class="search-info-block">
+                <div class="search-info-grid" id="search-info-grid"></div>
+            </div>
+            
+            <div id="search-dropdown" class="search-dropdown">
+                <div class="search-dropdown-inner" id="search-dropdown-inner"></div>
+            </div>
+            
+            <div id="filter-lists">
+                <div id="airing-list" class="filter-list-container"></div>
+                <div id="new-season-list" class="filter-list-container"></div>
+                <div id="ended-list" class="filter-list-container"></div>
+                <div id="voice-list" class="filter-list-container"></div>
+                <div id="dub-list" class="filter-list-container"></div>
+            </div>
+            <div id="new-season-empty-msg" class="new-season-empty-msg">
+                <p class="text-lg text-slate-300 font-medium">Уже ничего не ждём! Заваривай чай и смотри новые серии ♡</p>
+            </div>
+        </div>
+
+        <div id="schedule-section" class="glass-card rounded-3xl overflow-hidden p-4 md:p-6">
+            <div id="calendar-wrapper"><div class="loading-banner"><span class="spinner"></span>Загрузка расписания через резервные каналы...</div></div>
+            
+            <div class="flex flex-wrap gap-6 mt-6 justify-center text-sm text-slate-400 pb-2 px-6">
+                <div class="flex items-center"><span class="status-dot dot-active"></span> В эфире</div>
+                <div class="flex items-center"><span class="status-dot dot-moved"></span> Перенос</div>
+                <div class="flex items-center"><span class="status-dot dot-special"></span> Финал / Новинка</div>
+            </div>
+            <div class="text-center text-xs text-slate-500 mt-2">💡 Нажмите на карточку трансляции, чтобы узнать подробности</div>
+        </div>
+    </div>
+
+    <div id="modal-overlay" class="modal-overlay">
+        <div class="flip-container">
+            <div class="flip-card" id="flip-card">
+                <div class="flip-face flip-front"></div>
+                <div class="flip-face flip-back">
+                    <button class="close-btn" onclick="closeModal()" aria-label="Закрыть">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line>
+                        </svg>
+                    </button>
+                    <h3 class="text-xl font-bold text-white mb-4 flex items-center">
+                        <span class="text-purple-400 mr-2">✨</span> Дополнительная информация
+                    </h3>
+                    <div id="modal-back-content"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const CONFIG = {
+            csvUrl: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSCGpum3bqWe33FPYcvCEnBkTF6m0v-6A7Hz2zRX91h0xWFUkgA8Kwse7f6X3tMoB3lLQh0tGVahZ1V/pub?output=csv',
+            colDate: 'Дата', colSeries: 'Сериал', colSeason: 'Сезон', colEpisode: 'Серия',
+            colModerator: 'Модератор', colStatus: 'Статус', colBan: 'Запрет',
+            colTranslator: 'Переводчик',
+            colVoice: 'Озвучка от AlisaDirilis', colDub: 'Дубляж',
+            colMoveReason: 'Причина переноса', colMoveAnswer: 'Ответ для пользователей',
+            colUpdated: 'Обновлено',
+            colChangeType: 'Тип изменения'
+        };
+
+        const DUB_SERIES = ['Далёкий город', 'Розы и грехи', 'Клюквенный щербет'];
+
+        const CSV_SOURCES = [
+            CONFIG.csvUrl,
+            'https://corsproxy.io/?url=' + encodeURIComponent(CONFIG.csvUrl),
+            'https://api.allorigins.win/raw?url=' + encodeURIComponent(CONFIG.csvUrl),
+            'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(CONFIG.csvUrl),
+            'https://thingproxy.freeboard.io/fetch/' + CONFIG.csvUrl
+        ];
+
+        // 🔥 Структура данных для Турецкой коллекции
+        // ЗАПОЛНИТЕ ЭТИ ДАННЫЕ согласно реальной информации
+        const TRANSLATORS = {
+            sabina: {
+                name: 'Сабина',
+                channel: 'https://t.me/turkdizionline',
+                channelName: 'Канал Сабины в телеграм',
+                series: [
+                    // Пример: { name: 'Название сериала', status: 'airing|new-season|ended', lastEpisode: { season: 1, episode: 10 } }
+                    // Замените на реальные данные
+                ]
+            },
+            getDizi: {
+                name: 'GET DIZI',
+                group: 'https://vk.com/turkiee',
+                groupName: 'Группа GET DIZI в ВК',
+                translators: [
+                    {
+                        name: 'Пакиза',
+                        series: [
+                            // Пример: { name: 'Название сериала', status: 'airing|new-season|ended', lastEpisode: { season: 1, episode: 10 } }
+                        ]
+                    },
+                    {
+                        name: 'Сюзанна',
+                        series: []
+                    },
+                    {
+                        name: 'Сама',
+                        series: []
+                    },
+                    {
+                        name: 'Фидан',
+                        series: []
+                    }
+                ]
+            },
+            ulker: {
+                name: 'Улькер',
+                channel: 'https://t.me/ulkeriye',
+                channelName: 'Канал Улькер в телеграм',
+                series: [
+                    // Пример: { name: 'Название сериала', status: 'airing|new-season|ended', lastEpisode: { season: 1, episode: 10 } }
+                ]
+            }
+        };
+
+        let allEvents = [];
+        let uniqueSeries = [];
+        let availableYears = [];
+        let todayUpdates = [];
+        const monthNames = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
+        const dayNamesFull = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'];
+        const dayNamesShort = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+        const currentMonthIndex = new Date().getMonth();
+        const currentYear = new Date().getFullYear();
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const yesterday = new Date(today);
+        yesterday.setDate(yesterday.getDate() - 1);
+
+        let activeFilters = { search: '', airing: false, newSeason: false, ended: false, voice: false, dub: false };
+        let selectedEndedSeries = null;
+        let selectedNewSeasonSeries = null;
+        let selectedAiringKey = null;
+        let selectedVoiceKey = null;
+        let selectedDubKey = null;
+        let currentRenderContext = { mode: 'month', year: null, month: null };
+        let savedMonthFilter = null;
+        let calendarViewFilter = 'month';
+
+        const seriesSearch = document.getElementById('series-search');
+        const searchClear = document.getElementById('search-clear');
+        const searchDropdown = document.getElementById('search-dropdown');
+        const searchDropdownInner = document.getElementById('search-dropdown-inner');
+        const searchInfoBlock = document.getElementById('search-info-block');
+        const searchInfoGrid = document.getElementById('search-info-grid');
+        const newSeasonEmptyMsg = document.getElementById('new-season-empty-msg');
+        const monthFilterInput = document.getElementById('month-filter');
+        const monthTrigger = document.getElementById('month-trigger');
+        const monthTriggerText = document.getElementById('month-trigger-text');
+        const monthDropdown = document.getElementById('month-dropdown');
+        const updatesBtn = document.getElementById('updates-btn');
+        const updatesBadge = document.getElementById('updates-badge');
+        const updatesDropdown = document.getElementById('updates-dropdown');
+        const updatesList = document.getElementById('updates-list');
+        const collectionBtn = document.getElementById('collection-btn');
+        const collectionDropdown = document.getElementById('collection-dropdown');
+        const collectionContent = document.getElementById('collection-content');
+
+        const layoutMap = {
+            'q': 'й', 'w': 'ц', 'e': 'у', 'r': 'к', 't': 'е', 'y': 'н', 'u': 'г', 'i': 'ш', 'o': 'щ', 'p': 'з', '[': 'х', ']': 'ъ',
+            'a': 'ф', 's': 'ы', 'd': 'в', 'f': 'а', 'g': 'п', 'h': 'р', 'j': 'о', 'k': 'л', 'l': 'д', ';': 'ж', "'": 'э',
+            'z': 'я', 'x': 'ч', 'c': 'с', 'v': 'м', 'b': 'и', 'n': 'т', 'm': 'ь', ',': 'б', '.': 'ю', '/': '.',
+            'Q': 'Й', 'W': 'Ц', 'E': 'У', 'R': 'К', 'T': 'Е', 'Y': 'Н', 'U': 'Г', 'I': 'Ш', 'O': 'Щ', 'P': 'З', '{': 'Х', '}': 'Ъ',
+            'A': 'Ф', 'S': 'Ы', 'D': 'В', 'F': 'А', 'G': 'П', 'H': 'Р', 'J': 'О', 'K': 'Л', 'L': 'Д', ':': 'Ж', '"': 'Э',
+            'Z': 'Я', 'X': 'Ч', 'C': 'С', 'V': 'М', 'B': 'И', 'N': 'Т', 'M': 'Ь', '<': 'Б', '>': 'Ю', '?': ','
+        };
+
+        function convertLayout(text) {
+            return text.split('').map(ch => layoutMap[ch] !== undefined ? layoutMap[ch] : ch).join('');
+        }
+
+        function normalizeSearch(text) {
+            return String(text || '').toLowerCase().replace(/ё/g, 'е');
+        }
+
+        function levenshteinDistance(a, b) {
+            const matrix = [];
+            for (let i = 0; i <= b.length; i++) matrix[i] = [i];
+            for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
+            
+            for (let i = 1; i <= b.length; i++) {
+                for (let j = 1; j <= a.length; j++) {
+                    if (b.charAt(i - 1) === a.charAt(j - 1)) {
+                        matrix[i][j] = matrix[i - 1][j - 1];
+                    } else {
+                        matrix[i][j] = Math.min(
+                            matrix[i - 1][j - 1] + 1,
+                            matrix[i][j - 1] + 1,
+                            matrix[i - 1][j] + 1
+                        );
+                    }
+                }
+            }
+            return matrix[b.length][a.length];
+        }
+
+        function getMaxErrors(len) {
+            if (len <= 4) return 1;
+            if (len <= 8) return 2;
+            if (len <= 15) return 2;
+            return 3;
+        }
+
+        function getTodayFormatted() {
+            const now = new Date();
+            const day = String(now.getDate()).padStart(2, '0');
+            const month = String(now.getMonth() + 1).padStart(2, '0');
+            const year = now.getFullYear();
+            return `${day}.${month}.${year}`;
+        }
+
+        function parseDate(dateStr) {
+            if (!dateStr) return null;
+            if (dateStr instanceof Date) return isNaN(dateStr.getTime()) ? null : dateStr;
+            const str = String(dateStr).trim();
+            if (!str) return null;
+            
+            let match = str.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+            if (match) {
+                const day = parseInt(match[1], 10), month = parseInt(match[2], 10) - 1, year = parseInt(match[3], 10);
+                const d = new Date(year, month, day);
+                if (d.getFullYear() === year && d.getMonth() === month && d.getDate() === day) return d;
+            }
+            match = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+            if (match) {
+                const day = parseInt(match[1], 10), month = parseInt(match[2], 10) - 1, year = parseInt(match[3], 10);
+                const d = new Date(year, month, day);
+                if (d.getFullYear() === year && d.getMonth() === month && d.getDate() === day) return d;
+            }
+            match = str.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+            if (match) {
+                const year = parseInt(match[1], 10), month = parseInt(match[2], 10) - 1, day = parseInt(match[3], 10);
+                const d = new Date(year, month, day);
+                if (d.getFullYear() === year && d.getMonth() === month && d.getDate() === day) return d;
+            }
+            match = str.match(/^(\d{1,2})\.(\d{1,2})\.(\d{2})$/);
+            if (match) {
+                const day = parseInt(match[1], 10), month = parseInt(match[2], 10) - 1, year = 2000 + parseInt(match[3], 10);
+                const d = new Date(year, month, day);
+                if (d.getFullYear() === year && d.getMonth() === month && d.getDate() === day) return d;
+            }
+            const d = new Date(str);
+            return !isNaN(d.getTime()) ? d : null;
+        }
+
+        function getWeekRange(offset = 0) {
+            const d = new Date(today);
+            const day = d.getDay();
+            const diff = (day === 0 ? -6 : 1) - day;
+            const weekStart = new Date(d);
+            weekStart.setDate(d.getDate() + diff + (offset * 7));
+            weekStart.setHours(0, 0, 0, 0);
+            const weekEnd = new Date(weekStart);
+            weekEnd.setDate(weekStart.getDate() + 6);
+            weekEnd.setHours(23, 59, 59, 999);
+            return { weekStart, weekEnd };
+        }
+
+        function getVoiceWaitingList() {
+            const result = [];
+            allEvents.forEach(e => {
+                if (!e._parsedDate || e._parsedDate >= today) return;
+                const voice = e[CONFIG.colVoice] ? String(e[CONFIG.colVoice]).trim() : '';
+                if (voice) return;
+                const status = String(e[CONFIG.colStatus] || '').toLowerCase();
+                if (status.includes('перенос') || status.includes('перенес')) return;
+                result.push({ series: e[CONFIG.colSeries].trim(), event: e, date: e._parsedDate });
+            });
+            return result.sort((a, b) => a.date - b.date);
+        }
+
+        function getVoiceReleasedList() {
+            const { weekStart, weekEnd } = getWeekRange(0);
+            const result = [];
+            allEvents.forEach(e => {
+                const voice = e[CONFIG.colVoice] ? String(e[CONFIG.colVoice]).trim() : '';
+                if (!voice) return;
+                const vd = parseDate(voice);
+                if (!vd) return;
+                if (vd < weekStart || vd > weekEnd) return;
+                result.push({ series: e[CONFIG.colSeries].trim(), event: e, date: e._parsedDate, releaseDate: vd });
+            });
+            return result.sort((a, b) => a.releaseDate - b.releaseDate);
+        }
+
+        function isDubExpectedSeries(name) {
+            return DUB_SERIES.some(s => s.toLowerCase() === name.toLowerCase());
+        }
+
+        function getDubWaitingList() {
+            const result = [];
+            allEvents.forEach(e => {
+                if (!e._parsedDate || e._parsedDate >= today) return;
+                const name = e[CONFIG.colSeries].trim();
+                if (!isDubExpectedSeries(name)) return;
+                const dub = e[CONFIG.colDub] ? String(e[CONFIG.colDub]).trim() : '';
+                if (dub) return;
+                const status = String(e[CONFIG.colStatus] || '').toLowerCase();
+                if (status.includes('перенос') || status.includes('перенес')) return;
+                result.push({ series: name, event: e, date: e._parsedDate });
+            });
+            return result.sort((a, b) => a.date - b.date);
+        }
+
+        function getDubReleasedList() {
+            const { weekStart, weekEnd } = getWeekRange(0);
+            const result = [];
+            allEvents.forEach(e => {
+                const dub = e[CONFIG.colDub] ? String(e[CONFIG.colDub]).trim() : '';
+                if (!dub) return;
+                const dd = parseDate(dub);
+                if (!dd) return;
+                if (dd < weekStart || dd > weekEnd) return;
+                result.push({ series: e[CONFIG.colSeries].trim(), event: e, date: e._parsedDate, releaseDate: dd });
+            });
+            return result.sort((a, b) => a.releaseDate - b.releaseDate);
+        }
+
+        function fetchWithTimeout(url, ms) {
+            return new Promise((resolve, reject) => {
+                const ctrl = new AbortController();
+                const timer = setTimeout(() => ctrl.abort(), ms);
+                fetch(url, { signal: ctrl.signal, cache: 'no-store' })
+                    .then(res => {
+                        clearTimeout(timer);
+                        if (!res.ok) return reject(new Error('HTTP ' + res.status));
+                        return res.text();
+                    })
+                    .then(text => {
+                        clearTimeout(timer);
+                        if (!text || text.length < 10) return reject(new Error('Пустой ответ'));
+                        if (text.trim().startsWith('<')) return reject(new Error('Получен HTML вместо CSV'));
+                        resolve(text);
+                    })
+                    .catch(err => {
+                        clearTimeout(timer);
+                        reject(err);
+                    });
+            });
+        }
+
+        async function loadCSV() {
+            for (let i = 0; i < CSV_SOURCES.length; i++) {
+                const src = CSV_SOURCES[i];
+                const timeout = i === 0 ? 6000 : 15000;
+                try {
+                    console.log(`🔄 Канал #${i + 1}: ${src.slice(0, 80)}...`);
+                    const text = await fetchWithTimeout(src, timeout);
+                    console.log(`✅ Канал #${i + 1} вернул ${text.length} байт`);
+                    const results = Papa.parse(text, { header: true, skipEmptyLines: true, dynamicTyping: false });
+                    handleData(results);
+                    return;
+                } catch (e) {
+                    console.warn(`❌ Канал #${i + 1} не сработал: ${e.message}`);
+                }
+            }
+            throw new Error('Все каналы недоступны');
+        }
+
+        function handleData(results) {
+            console.log('=== ЗАГРУЗКА CSV ===');
+            console.log('Строк:', results.data.length, 'Заголовки:', results.meta.fields);
+            if (results.data.length > 0) console.log('Первая строка:', results.data[0]);
+            console.log('Сегодня (дд.мм.гггг):', getTodayFormatted());
+            
+            let parsedCount = 0, failedCount = 0;
+            allEvents = results.data
+                .filter(row => row[CONFIG.colDate] && row[CONFIG.colSeries])
+                .map(row => {
+                    const d = parseDate(row[CONFIG.colDate]);
+                    if (d) parsedCount++;
+                    else { failedCount++; if (failedCount <= 5) console.warn('Не удалось распарсить дату:', row[CONFIG.colDate], 'для:', row[CONFIG.colSeries]); }
+                    return { ...row, _parsedDate: d };
+                })
+                .filter(row => row._parsedDate !== null)
+                .sort((a, b) => (a._parsedDate || 0) - (b._parsedDate || 0));
+            
+            console.log(`✅ Распарсено: ${parsedCount}, ❌ Ошибок: ${failedCount}, Событий: ${allEvents.length}`);
+            
+            const seriesSet = new Set(), yearsSet = new Set();
+            allEvents.forEach(event => { 
+                const name = event[CONFIG.colSeries].trim(); 
+                if (name) seriesSet.add(name);
+                if (event._parsedDate) yearsSet.add(event._parsedDate.getFullYear());
+            });
+            uniqueSeries = Array.from(seriesSet).sort();
+            availableYears = Array.from(yearsSet).sort();
+            
+            console.log('Сериалы:', uniqueSeries, 'Годы:', availableYears);
+            
+            populateMonthFilter();
+            renderUpdates();
+            renderCollection();
+            renderView();
+            setTimeout(() => scrollToToday(), 300);
+        }
+
+        function showLoadError(err) {
+            console.error("Ошибка загрузки CSV:", err);
+            document.getElementById('calendar-wrapper').innerHTML = `
+                <div class="p-8 text-center text-red-300 bg-red-500/10 rounded-2xl border border-red-500/20">
+                    <div class="text-3xl mb-3">📡</div>
+                    <div class="font-bold text-lg mb-2">Не удалось загрузить расписание</div>
+                    <div class="text-sm text-red-200/70 mb-4">Домен Google Sheets недоступен с вашего устройства, и все резервные каналы (прокси) тоже не ответили.</div>
+                    <button id="retry-load" class="bg-red-500/20 hover:bg-red-500/30 border border-red-500/40 text-red-100 px-4 py-2 rounded-lg font-semibold transition-all">🔄 Повторить загрузку</button>
+                </div>`;
+            const btn = document.getElementById('retry-load');
+            if (btn) btn.addEventListener('click', () => {
+                document.getElementById('calendar-wrapper').innerHTML = '<div class="loading-banner"><span class="spinner"></span>Повторная загрузка...</div>';
+                loadCSV().catch(showLoadError);
+            });
+        }
+
+        loadCSV().catch(showLoadError);
+
+        function switchMonthTo(value) {
+            if (value === monthFilterInput.value) return;
+            monthFilterInput.value = value;
+            const option = monthDropdown.querySelector(`[data-value="${value}"]`);
+            if (option) {
+                monthTriggerText.textContent = option.textContent;
+                monthDropdown.querySelectorAll('.custom-select-option').forEach(o => o.classList.remove('selected'));
+                option.classList.add('selected');
+            }
+        }
+
+        function findMonthForFilter() {
+            const filters = [];
+            if (activeFilters.ended) filters.push('ended');
+            if (activeFilters.newSeason) filters.push('newSeason');
+            if (activeFilters.voice) filters.push('voice');
+            if (activeFilters.dub) filters.push('dub');
+            if (activeFilters.airing) filters.push('airing');
+            
+            if (filters.length === 0) return null;
+            
+            for (const filter of filters) {
+                if (filter === 'ended') {
+                    const items = getEndedSeriesList();
+                    if (items.length > 0) {
+                        const d = items[0].date;
+                        return `${d.getFullYear()}-${d.getMonth()}`;
+                    }
+                } else if (filter === 'newSeason') {
+                    const items = getNewSeasonList();
+                    if (items.length > 0) {
+                        const d = items[0].date;
+                        return `${d.getFullYear()}-${d.getMonth()}`;
+                    }
+                } else if (filter === 'voice') {
+                    const waiting = getVoiceWaitingList();
+                    if (waiting.length > 0) {
+                        const d = waiting[0].date;
+                        return `${d.getFullYear()}-${d.getMonth()}`;
+                    }
+                    const released = getVoiceReleasedList();
+                    if (released.length > 0) {
+                        const d = released[0].releaseDate;
+                        return `${d.getFullYear()}-${d.getMonth()}`;
+                    }
+                } else if (filter === 'dub') {
+                    const waiting = getDubWaitingList();
+                    if (waiting.length > 0) {
+                        const d = waiting[0].date;
+                        return `${d.getFullYear()}-${d.getMonth()}`;
+                    }
+                    const released = getDubReleasedList();
+                    if (released.length > 0) {
+                        const d = released[0].releaseDate;
+                        return `${d.getFullYear()}-${d.getMonth()}`;
+                    }
+                } else if (filter === 'airing') {
+                    return `${currentYear}-${currentMonthIndex}`;
+                }
+            }
+            return null;
+        }
+
+        function populateMonthFilter() {
+            monthDropdown.innerHTML = '';
+            const allOption = document.createElement('div');
+            allOption.className = 'custom-select-option all-years';
+            allOption.dataset.value = 'all';
+            allOption.textContent = `${currentYear} год`;
+            monthDropdown.appendChild(allOption);
+            
+            availableYears.forEach(year => {
+                const yearHeader = document.createElement('div');
+                yearHeader.className = 'custom-select-option year-header';
+                yearHeader.textContent = `── ${year} год ──`;
+                monthDropdown.appendChild(yearHeader);
+                monthNames.forEach((name, index) => {
+                    const option = document.createElement('div');
+                    option.className = 'custom-select-option';
+                    option.dataset.value = `${year}-${index}`;
+                    option.textContent = `${name} ${year}`;
+                    if (year === currentYear && index === currentMonthIndex) {
+                        option.classList.add('selected');
+                        monthTriggerText.textContent = `${name} ${year}`;
+                        monthFilterInput.value = `${year}-${index}`;
+                    }
+                    monthDropdown.appendChild(option);
+                });
+            });
+            
+            monthDropdown.querySelectorAll('.custom-select-option:not(.year-header)').forEach(option => {
+                option.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    monthFilterInput.value = option.dataset.value;
+                    monthTriggerText.textContent = option.textContent;
+                    monthDropdown.querySelectorAll('.custom-select-option').forEach(o => o.classList.remove('selected'));
+                    option.classList.add('selected');
+                    closeMonthDropdown();
+                    savedMonthFilter = option.dataset.value;
+                    calendarViewFilter = 'month';
+                    renderView();
+                });
+            });
+        }
+
+        function openMonthDropdown() { 
+            monthTrigger.classList.add('open'); 
+            monthDropdown.classList.add('open');
+            const selected = monthDropdown.querySelector('.custom-select-option.selected');
+            if (selected) {
+                setTimeout(() => {
+                    selected.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                }, 50);
+            }
+        }
+        function closeMonthDropdown() { monthTrigger.classList.remove('open'); monthDropdown.classList.remove('open'); }
+
+        monthTrigger.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (monthDropdown.classList.contains('open')) closeMonthDropdown();
+            else openMonthDropdown();
+        });
+
+        updatesBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const isOpen = updatesDropdown.classList.contains('open');
+            
+            if (!isOpen) {
+                const isMobile = window.innerWidth < 768;
+                if (isMobile) {
+                    const btnRect = updatesBtn.getBoundingClientRect();
+                    const dropdownHeight = Math.min(500, window.innerHeight - btnRect.bottom - 32);
+                    updatesDropdown.style.top = (btnRect.bottom + 8) + 'px';
+                    updatesDropdown.style.left = '16px';
+                    updatesDropdown.style.right = '16px';
+                    updatesDropdown.style.width = 'auto';
+                    updatesDropdown.style.maxHeight = dropdownHeight + 'px';
+                    updatesDropdown.style.position = 'fixed';
+                } else {
+                    updatesDropdown.style.top = '';
+                    updatesDropdown.style.left = '';
+                    updatesDropdown.style.right = '';
+                    updatesDropdown.style.width = '';
+                    updatesDropdown.style.maxHeight = '';
+                    updatesDropdown.style.position = '';
+                }
+            }
+            
+            updatesDropdown.classList.toggle('open');
+            updatesBtn.classList.toggle('active');
+        });
+
+        // 🔥 Обработчик для Турецкой коллекции
+        collectionBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const isOpen = collectionDropdown.classList.contains('open');
+            
+            if (!isOpen) {
+                const isMobile = window.innerWidth < 768;
+                if (isMobile) {
+                    const btnRect = collectionBtn.getBoundingClientRect();
+                    const dropdownHeight = Math.min(600, window.innerHeight - btnRect.bottom - 32);
+                    collectionDropdown.style.bottom = (window.innerHeight - btnRect.bottom + 8) + 'px';
+                    collectionDropdown.style.left = '16px';
+                    collectionDropdown.style.right = '16px';
+                    collectionDropdown.style.width = 'auto';
+                    collectionDropdown.style.maxHeight = dropdownHeight + 'px';
+                    collectionDropdown.style.position = 'fixed';
+                } else {
+                    collectionDropdown.style.bottom = '';
+                    collectionDropdown.style.left = '';
+                    collectionDropdown.style.right = '';
+                    collectionDropdown.style.width = '';
+                    collectionDropdown.style.maxHeight = '';
+                    collectionDropdown.style.position = '';
+                }
+            }
+            
+            collectionDropdown.classList.toggle('open');
+            collectionBtn.classList.toggle('active');
+        });
+
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('.custom-select-wrapper')) closeMonthDropdown();
+            if (!e.target.closest('.search-container') && !e.target.closest('.search-dropdown')) closeDropdown();
+            if (!e.target.closest('.updates-btn') && !e.target.closest('.updates-dropdown')) {
+                updatesDropdown.classList.remove('open');
+                updatesBtn.classList.remove('active');
+            }
+            if (!e.target.closest('.collection-btn') && !e.target.closest('.collection-dropdown')) {
+                collectionDropdown.classList.remove('open');
+                collectionBtn.classList.remove('active');
+            }
+        });
+
+        function openDropdown() { searchDropdown.classList.add('active'); }
+        function closeDropdown() { searchDropdown.classList.remove('active'); }
+
+        seriesSearch.addEventListener('input', function() {
+            let query = this.value.trim();
+            searchClear.classList.toggle('visible', this.value.length > 0);
+            
+            if (!query) { 
+                closeDropdown(); 
+                activeFilters.search = '';
+                searchInfoBlock.classList.remove('visible');
+                renderView(); 
+                return; 
+            }
+            
+            const queryNormalized = normalizeSearch(query);
+            let exactMatches = uniqueSeries.filter(s => normalizeSearch(s).includes(queryNormalized));
+            
+            let fuzzyMatches = [];
+            if (exactMatches.length === 0 && queryNormalized.length >= 2) {
+                const maxErrors = getMaxErrors(queryNormalized.length);
+                const scored = uniqueSeries.map(s => {
+                    const sNorm = normalizeSearch(s);
+                    let bestDist = Infinity;
+                    for (let start = 0; start <= sNorm.length - queryNormalized.length; start++) {
+                        for (let len = Math.max(queryNormalized.length - 1, queryNormalized.length); len <= queryNormalized.length + 2 && start + len <= sNorm.length; len++) {
+                            const sub = sNorm.substr(start, len);
+                            const dist = levenshteinDistance(queryNormalized, sub);
+                            if (dist < bestDist) bestDist = dist;
+                        }
+                    }
+                    const fullDist = levenshteinDistance(queryNormalized, sNorm);
+                    if (fullDist < bestDist) bestDist = fullDist;
+                    return { name: s, dist: bestDist };
+                }).filter(x => x.dist <= maxErrors)
+                  .sort((a, b) => a.dist - b.dist);
+                
+                fuzzyMatches = scored.map(x => x.name);
+            }
+            
+            if (exactMatches.length === 0 && fuzzyMatches.length === 0) {
+                searchDropdownInner.innerHTML = '<div class="search-dropdown-empty">Ничего не найдено</div>';
+                openDropdown();
+                return;
+            }
+            
+            const displayMatches = exactMatches.length > 0 ? exactMatches : fuzzyMatches;
+            const isFuzzy = exactMatches.length === 0;
+            
+            searchDropdownInner.innerHTML = displayMatches.map(s => 
+                `<div class="search-dropdown-item${isFuzzy ? ' fuzzy-match' : ''}" data-series="${escapeHtml(s)}">${escapeHtml(s)}</div>`
+            ).join('');
+            openDropdown();
+            
+            searchDropdownInner.querySelectorAll('.search-dropdown-item').forEach(item => {
+                item.addEventListener('click', () => {
+                    seriesSearch.value = item.dataset.series;
+                    searchClear.classList.add('visible');
+                    activeFilters.search = item.dataset.series;
+                    closeDropdown();
+                    updateSearchInfo(item.dataset.series);
+                    renderView();
+                });
+            });
+        });
+
+        searchClear.addEventListener('click', function(e) {
+            e.stopPropagation();
+            seriesSearch.value = '';
+            searchClear.classList.remove('visible');
+            activeFilters.search = '';
+            searchInfoBlock.classList.remove('visible');
+            closeDropdown();
+            const currentMonthValue = `${currentYear}-${currentMonthIndex}`;
+            if (monthFilterInput.value !== currentMonthValue) {
+                switchMonthTo(currentMonthValue);
+            }
+            calendarViewFilter = 'month';
+            document.querySelectorAll('.view-filter-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.view-filter-btn.month').forEach(b => b.classList.add('active'));
+            renderView();
+        });
+
+        seriesSearch.addEventListener('focus', function() {
+            if (this.value.trim()) this.dispatchEvent(new Event('input'));
+        });
+
+        function findNearestEvent(seriesName) {
+            const upcoming = allEvents.filter(e => {
+                if (e[CONFIG.colSeries].trim() !== seriesName) return false;
+                if (!e._parsedDate || e._parsedDate < today) return false;
+                const status = String(e[CONFIG.colStatus] || '').toLowerCase();
+                if (status.includes('перенос') || status.includes('перенес')) return false;
+                return true;
+            }).sort((a, b) => a._parsedDate - b._parsedDate);
+            return upcoming.length > 0 ? upcoming[0] : null;
+        }
+
+        function findLastPastEvent(seriesName) {
+            const past = allEvents.filter(e => {
+                if (e[CONFIG.colSeries].trim() !== seriesName) return false;
+                if (!e._parsedDate || e._parsedDate >= today) return false;
+                return true;
+            }).sort((a, b) => b._parsedDate - a._parsedDate);
+            return past.length > 0 ? past[0] : null;
+        }
+
+        function updateSearchInfo(seriesName) {
+            const pastEvent = findLastPastEvent(seriesName);
+            const nextEvent = findNearestEvent(seriesName);
+            const isEnded = isSeriesEnded(seriesName);
+            const isWaitingNew = isWaitingNewSeason(seriesName);
+            
+            if (!pastEvent && !nextEvent && !isEnded && !isWaitingNew) {
+                searchInfoBlock.classList.remove('visible');
+                return;
+            }
+            
+            let html = '';
+            
+            if (pastEvent) {
+                const season = pastEvent[CONFIG.colSeason] ? pastEvent[CONFIG.colSeason].trim() : '';
+                const episode = pastEvent[CONFIG.colEpisode] ? pastEvent[CONFIG.colEpisode].trim() : '';
+                let metaText = '';
+                if (season && episode) metaText = `Сезон ${season} • Серия ${episode}`;
+                else if (season) metaText = `Сезон ${season}`;
+                else if (episode) metaText = `Серия ${episode}`;
+                
+                let statusLabel = 'Последняя трансляция';
+                let cardClass = 'past';
+                
+                if (isEnded) {
+                    statusLabel += ' • Финал сериала';
+                    cardClass = 'ended';
+                } else if (isWaitingNew) {
+                    statusLabel += ' • Финал сезона';
+                    cardClass = 'season-end';
+                } else {
+                    statusLabel = 'Прошедшая трансляция';
+                }
+                
+                html += `<div class="search-info-card ${cardClass}" data-date="${formatDateForCell(pastEvent._parsedDate)}" data-series="${escapeHtml(seriesName)}" style="cursor: pointer;">
+                    <div>
+                        <div class="search-info-card-label">${statusLabel}</div>
+                        <div class="search-info-card-series">${escapeHtml(seriesName)}</div>
+                        <div class="search-info-card-meta">${metaText}</div>
+                    </div>
+                    <div class="search-info-card-date">${formatDateDMY(pastEvent._parsedDate)}</div>
+                </div>`;
+            } else if (isEnded) {
+                html += `<div class="search-info-card ended" style="opacity: 0.7;">
+                    <div>
+                        <div class="search-info-card-label">Сериал завершён</div>
+                        <div class="search-info-card-series">${escapeHtml(seriesName)}</div>
+                        <div class="search-info-card-meta">Нет данных о трансляциях</div>
+                    </div>
+                    <div class="search-info-card-date">—</div>
+                </div>`;
+            } else if (isWaitingNew) {
+                html += `<div class="search-info-card season-end" style="opacity: 0.7;">
+                    <div>
+                        <div class="search-info-card-label">Ждём новый сезон</div>
+                        <div class="search-info-card-series">${escapeHtml(seriesName)}</div>
+                        <div class="search-info-card-meta">Нет данных о трансляциях</div>
+                    </div>
+                    <div class="search-info-card-date">—</div>
+                </div>`;
+            }
+            
+            if (!isEnded && nextEvent) {
+                const season = nextEvent[CONFIG.colSeason] ? nextEvent[CONFIG.colSeason].trim() : '';
+                const episode = nextEvent[CONFIG.colEpisode] ? nextEvent[CONFIG.colEpisode].trim() : '';
+                let metaText = '';
+                if (season && episode) metaText = `Сезон ${season} • Серия ${episode}`;
+                else if (season) metaText = `Сезон ${season}`;
+                else if (episode) metaText = `Серия ${episode}`;
+                
+                html += `<div class="search-info-card next" data-date="${formatDateForCell(nextEvent._parsedDate)}" data-series="${escapeHtml(seriesName)}" style="cursor: pointer;">
+                    <div>
+                        <div class="search-info-card-label">Ближайшая трансляция</div>
+                        <div class="search-info-card-series">${escapeHtml(seriesName)}</div>
+                        <div class="search-info-card-meta">${metaText}</div>
+                    </div>
+                    <div class="search-info-card-date">${formatDateDMY(nextEvent._parsedDate)}</div>
+                </div>`;
+            } else if (!isEnded) {
+                html += `<div class="search-info-card next" style="opacity: 0.4;">
+                    <div>
+                        <div class="search-info-card-label">Ближайшая трансляция</div>
+                        <div class="search-info-card-series">${escapeHtml(seriesName)}</div>
+                        <div class="search-info-card-meta">Нет данных</div>
+                    </div>
+                    <div class="search-info-card-date">—</div>
+                </div>`;
+            }
+            
+            searchInfoGrid.innerHTML = html;
+            searchInfoBlock.classList.add('visible');
+            
+            searchInfoGrid.querySelectorAll('.search-info-card').forEach(card => {
+                card.addEventListener('click', () => {
+                    const dateStr = card.dataset.date;
+                    const series = card.dataset.series;
+                    if (dateStr && series && dateStr !== 'undefined') scrollToCell(dateStr, series);
+                });
+            });
+        }
+
+        document.querySelectorAll('.filter-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const filter = this.dataset.filter;
+                const wasActive = this.classList.contains('active');
+                this.classList.toggle('active');
+                activeFilters[filter] = this.classList.contains('active');
+                if (!activeFilters.ended) selectedEndedSeries = null;
+                if (!activeFilters.newSeason) selectedNewSeasonSeries = null;
+                if (!activeFilters.airing) selectedAiringKey = null;
+                if (!activeFilters.voice) selectedVoiceKey = null;
+                if (!activeFilters.dub) selectedDubKey = null;
+                
+                if (filter === 'airing' && !wasActive) {
+                    calendarViewFilter = 'week';
+                    document.querySelectorAll('.view-filter-btn').forEach(b => b.classList.remove('active'));
+                    document.querySelectorAll('.view-filter-btn.week').forEach(b => b.classList.add('active'));
+                } else if ((filter === 'voice' || filter === 'dub') && !wasActive) {
+                    calendarViewFilter = 'last-week';
+                    document.querySelectorAll('.view-filter-btn').forEach(b => b.classList.remove('active'));
+                    document.querySelectorAll('.view-filter-btn.last-week').forEach(b => b.classList.add('active'));
+                }
+                
+                const anyInfoFilterActive = activeFilters.ended || activeFilters.newSeason || activeFilters.voice || activeFilters.dub || activeFilters.airing;
+                
+                if (!wasActive && anyInfoFilterActive) {
+                    if (savedMonthFilter === null) {
+                        savedMonthFilter = monthFilterInput.value;
+                    }
+                    const newMonth = findMonthForFilter();
+                    if (newMonth) switchMonthTo(newMonth);
+                } else if (wasActive && !anyInfoFilterActive) {
+                    if (savedMonthFilter !== null) {
+                        switchMonthTo(savedMonthFilter);
+                        savedMonthFilter = null;
+                    }
+                    calendarViewFilter = 'month';
+                    document.querySelectorAll('.view-filter-btn').forEach(b => b.classList.remove('active'));
+                    document.querySelectorAll('.view-filter-btn.month').forEach(b => b.classList.add('active'));
+                }
+                
+                updateFilterLists();
+                renderView();
+            });
+        });
+
+        function getLastStatusBefore(seriesName, beforeDate) {
+            const relevant = allEvents.filter(e => e[CONFIG.colSeries].trim() === seriesName && e._parsedDate && e._parsedDate <= beforeDate).sort((a, b) => a._parsedDate - b._parsedDate);
+            return relevant.length > 0 ? relevant[relevant.length - 1] : null;
+        }
+
+        function isAiringInCurrentMonth(seriesName) {
+            const monthStart = new Date(currentYear, currentMonthIndex, 1);
+            const monthEnd = new Date(currentYear, currentMonthIndex + 1, 0);
+            return allEvents.some(e => {
+                if (e[CONFIG.colSeries].trim() !== seriesName || !e._parsedDate) return false;
+                if (e._parsedDate < monthStart || e._parsedDate > monthEnd) return false;
+                const status = String(e[CONFIG.colStatus] || '').toLowerCase();
+                if (status.includes('перенос') || status.includes('перенес')) return false;
+                if ((status.includes('финал сезона') || status.includes('финал сериала')) && e._parsedDate < today) return false;
+                if (status.includes('в эфире') || status.includes('новинка') || 
+                    status.includes('финал сезона') || status.includes('финал сериала')) return true;
+                return false;
+            });
+        }
+
+        function isWaitingNewSeason(seriesName) {
+            const lastEvent = getLastStatusBefore(seriesName, today);
+            return lastEvent && String(lastEvent[CONFIG.colStatus] || '').toLowerCase().includes('финал сезона');
+        }
+
+        function isSeriesEnded(seriesName) {
+            const lastEvent = getLastStatusBefore(seriesName, today);
+            return lastEvent && String(lastEvent[CONFIG.colStatus] || '').toLowerCase().includes('финал сериала');
+        }
+
+        function getAiringList() {
+            const result = [];
+            uniqueSeries.forEach(seriesName => {
+                if (!isAiringInCurrentMonth(seriesName)) return;
+                const upcomingEvents = allEvents.filter(e => {
+                    if (e[CONFIG.colSeries].trim() !== seriesName || !e._parsedDate) return false;
+                    if (e._parsedDate < today) return false; 
+                    const status = String(e[CONFIG.colStatus] || '').toLowerCase();
+                    if (status.includes('перенос') || status.includes('перенес')) return false;
+                    if (status.includes('в эфире') || status.includes('новинка') || 
+                        status.includes('финал сезона') || status.includes('финал сериала')) return true;
+                    return false;
+                }).sort((a, b) => a._parsedDate - b._parsedDate);
+                
+                if (upcomingEvents.length > 0) {
+                    result.push({ series: seriesName, date: upcomingEvents[0]._parsedDate, event: upcomingEvents[0] });
+                }
+            });
+            return result.sort((a, b) => a.date - b.date);
+        }
+
+        function getNewSeasonList() {
+            const result = [];
+            uniqueSeries.forEach(seriesName => {
+                if (!isWaitingNewSeason(seriesName)) return;
+                const lastEvent = getLastStatusBefore(seriesName, today);
+                result.push({ series: seriesName, date: lastEvent._parsedDate, event: lastEvent });
+            });
+            return result.sort((a, b) => b.date - a.date);
+        }
+
+        function getEndedSeriesList() {
+            const result = [];
+            uniqueSeries.forEach(seriesName => {
+                if (!isSeriesEnded(seriesName)) return;
+                const lastEvent = getLastStatusBefore(seriesName, today);
+                result.push({ series: seriesName, date: lastEvent._parsedDate, event: lastEvent });
+            });
+            return result.sort((a, b) => b.date - a.date);
+        }
+
+        function getSeriesFromKey(key) {
+            if (!key) return null;
+            return key.split('|')[0];
+        }
+
+        function updateFilterLists() {
+            const airingList = document.getElementById('airing-list');
+            const newSeasonList = document.getElementById('new-season-list');
+            const endedList = document.getElementById('ended-list');
+            const voiceList = document.getElementById('voice-list');
+            const dubList = document.getElementById('dub-list');
+            
+            const activeFilterNames = [];
+            if (activeFilters.airing) activeFilterNames.push('airing');
+            if (activeFilters.newSeason) activeFilterNames.push('new-season');
+            if (activeFilters.ended) activeFilterNames.push('ended');
+            const multipleFilters = activeFilterNames.length > 1;
+            
+            if (activeFilters.airing) {
+                const items = getAiringList();
+                if (items.length > 0) {
+                    airingList.innerHTML = `<div><div class="filter-list">${items.map(item => {
+                        const borders = multipleFilters ? 'border-airing' : '';
+                        const itemKey = `${item.series}|${formatDateForCell(item.date)}`;
+                        const isSelected = selectedAiringKey === itemKey ? 'selected-airing' : '';
+                        const status = String(item.event[CONFIG.colStatus] || '').toLowerCase();
+                        let metaText = `Сезон ${item.event[CONFIG.colSeason] || ''} Серия ${item.event[CONFIG.colEpisode] || ''}`;
+                        if (status.includes('финал сезона')) metaText = `Финал сезона • ${metaText}`;
+                        else if (status.includes('финал сериала')) metaText = `Финал сериала • ${metaText}`;
+                        else if (status.includes('новинка')) metaText = `Новинка • ${metaText}`;
+                        return `<div class="filter-list-item ${borders} ${isSelected}" data-date="${formatDateForCell(item.date)}" data-series="${escapeHtml(item.series)}">
+                            <div><div class="filter-list-name">${escapeHtml(item.series)}</div><div class="filter-list-meta">${metaText}</div></div>
+                            <div class="filter-list-date">${formatDateDMY(item.date)}</div>
+                        </div>`;
+                    }).join('')}</div></div>`;
+                    if (selectedAiringKey) {
+                        const selSeries = getSeriesFromKey(selectedAiringKey);
+                        airingList.innerHTML += `<div style="text-align: center; padding: 12px; margin-top: 8px;">
+                            <button class="reset-selection-btn" data-filter="airing" style="background: rgba(16, 185, 129, 0.2); border: 1px solid rgba(16, 185, 129, 0.4); color: #6ee7b7; padding: 6px 16px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; transition: all 0.2s;">
+                                ✕ Сбросить выбор: ${escapeHtml(selSeries)}
+                            </button>
+                        </div>`;
+                    }
+                    airingList.classList.add('active');
+                    attachFilterItemClickHandlers(airingList, 'airing');
+                    const resetBtn = airingList.querySelector('.reset-selection-btn[data-filter="airing"]');
+                    if (resetBtn) resetBtn.addEventListener('click', (e) => { e.stopPropagation(); selectedAiringKey = null; updateFilterLists(); renderView(); });
+                } else {
+                    airingList.innerHTML = '<div><div class="filter-list-empty">Нет сериалов в эфире в этом месяце</div></div>';
+                    airingList.classList.add('active');
+                }
+            } else { 
+                airingList.classList.remove('active'); 
+                setTimeout(() => { if (!activeFilters.airing) airingList.innerHTML = ''; }, 400);
+            }
+            
+            const newSeasonItems = getNewSeasonList();
+            if (activeFilters.newSeason) {
+                if (newSeasonItems.length > 0) {
+                    newSeasonList.innerHTML = `<div><div class="filter-list">${newSeasonItems.map(item => {
+                        const borders = multipleFilters ? 'border-new-season' : '';
+                        return `<div class="filter-list-item ${borders}" data-date="${formatDateForCell(item.date)}" data-series="${escapeHtml(item.series)}">
+                            <div><div class="filter-list-name">${escapeHtml(item.series)}</div><div class="filter-list-meta">Финал сезона ${item.event[CONFIG.colSeason] || ''} Серия ${item.event[CONFIG.colEpisode] || ''}</div></div>
+                            <div class="filter-list-date">${formatDateDMY(item.date)}</div>
+                        </div>`;
+                    }).join('')}</div></div>`;
+                    newSeasonList.classList.add('active');
+                    attachListClickHandlers(newSeasonList);
+                    newSeasonEmptyMsg.classList.remove('visible');
+                } else {
+                    newSeasonList.innerHTML = '';
+                    newSeasonList.classList.remove('active');
+                    newSeasonEmptyMsg.classList.add('visible');
+                }
+            } else { 
+                newSeasonList.classList.remove('active'); 
+                newSeasonEmptyMsg.classList.remove('visible');
+                setTimeout(() => { if (!activeFilters.newSeason) newSeasonList.innerHTML = ''; }, 400);
+            }
+            
+            if (activeFilters.ended) {
+                const items = getEndedSeriesList();
+                let html = '';
+                if (items.length > 0) {
+                    html = `<div><div class="filter-list">${items.map(item => {
+                        const borders = multipleFilters ? 'border-ended' : '';
+                        const isSelected = selectedEndedSeries === item.series ? 'selected-ended' : '';
+                        return `<div class="filter-list-item ${borders} ${isSelected}" data-date="${formatDateForCell(item.date)}" data-series="${escapeHtml(item.series)}">
+                            <div><div class="filter-list-name">${escapeHtml(item.series)}</div><div class="filter-list-meta">Финал сериала • Сезон ${item.event[CONFIG.colSeason] || ''} Серия ${item.event[CONFIG.colEpisode] || ''}</div></div>
+                            <div class="filter-list-date">${formatDateDMY(item.date)}</div>
+                        </div>`;
+                    }).join('')}</div></div>`;
+                } else {
+                    html = '<div><div class="filter-list-empty">Нет завершённых сериалов</div></div>';
+                }
+                
+                if (selectedEndedSeries) {
+                    html += `<div style="text-align: center; padding: 12px; margin-top: 8px;">
+                        <button id="reset-ended-selection" style="background: rgba(168, 85, 247, 0.2); border: 1px solid rgba(168, 85, 247, 0.4); color: #d8b4fe; padding: 6px 16px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; transition: all 0.2s;">
+                            ✕ Сбросить выбор: ${escapeHtml(selectedEndedSeries)}
+                        </button>
+                    </div>`;
+                }
+                
+                endedList.innerHTML = html;
+                endedList.classList.add('active');
+                attachEndedClickHandlers(endedList);
+                
+                const resetBtn = document.getElementById('reset-ended-selection');
+                if (resetBtn) {
+                    resetBtn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        selectedEndedSeries = null;
+                        updateFilterLists();
+                        renderView();
+                    });
+                }
+            } else { 
+                endedList.classList.remove('active'); 
+                setTimeout(() => { if (!activeFilters.ended) endedList.innerHTML = ''; }, 400);
+            }
+
+            if (activeFilters.voice) {
+                const waiting = getVoiceWaitingList();
+                const released = getVoiceReleasedList();
+                let html = '<div>';
+                
+                html += `<div class="filter-subblock"><div class="filter-subblock-title voice">🎙️ Ожидаем озвучку</div>`;
+                if (waiting.length > 0) {
+                    html += `<div class="filter-list">${waiting.map(item => {
+                        const itemKey = `${item.series}|${formatDateForCell(item.date)}`;
+                        const isSelected = selectedVoiceKey === itemKey ? 'selected-voice' : '';
+                        const meta = `Сезон ${item.event[CONFIG.colSeason] || ''} Серия ${item.event[CONFIG.colEpisode] || ''}`;
+                        return `<div class="filter-list-item border-voice ${isSelected}" data-date="${formatDateForCell(item.date)}" data-series="${escapeHtml(item.series)}">
+                            <div><div class="filter-list-name">${escapeHtml(item.series)}</div><div class="filter-list-meta">${meta}</div></div>
+                            <div class="filter-list-date">${formatDateDMY(item.date)}</div>
+                        </div>`;
+                    }).join('')}</div>`;
+                } else {
+                    html += `<div class="filter-subblock-empty">Все озвучки вышли! 🎉</div>`;
+                }
+                html += `</div>`;
+                
+                html += `<div class="filter-subblock"><div class="filter-subblock-title voice">✨ Озвучки этой недели</div>`;
+                if (released.length > 0) {
+                    html += `<div class="filter-list">${released.map(item => {
+                        const itemKey = `${item.series}|${formatDateForCell(item.date)}`;
+                        const isSelected = selectedVoiceKey === itemKey ? 'selected-voice' : '';
+                        const meta = `Сезон ${item.event[CONFIG.colSeason] || ''} Серия ${item.event[CONFIG.colEpisode] || ''} • эфир ${formatDateDMY(item.date)}`;
+                        return `<div class="filter-list-item border-voice ${isSelected}" data-date="${formatDateForCell(item.date)}" data-series="${escapeHtml(item.series)}">
+                            <div><div class="filter-list-name">${escapeHtml(item.series)}</div><div class="filter-list-meta">${meta}</div></div>
+                            <div class="filter-list-date">${formatDateDMY(item.releaseDate)}</div>
+                        </div>`;
+                    }).join('')}</div>`;
+                } else {
+                    html += `<div class="filter-subblock-empty">На этой неделе озвучек не выходило</div>`;
+                }
+                html += `</div>`;
+                
+                if (selectedVoiceKey) {
+                    const selSeries = getSeriesFromKey(selectedVoiceKey);
+                    html += `<div style="text-align: center; padding: 12px; margin-top: 8px;">
+                        <button class="reset-selection-btn" data-filter="voice" style="background: rgba(249, 115, 22, 0.2); border: 1px solid rgba(249, 115, 22, 0.4); color: #fdba74; padding: 6px 16px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; transition: all 0.2s;">
+                            ✕ Сбросить выбор: ${escapeHtml(selSeries)}
+                        </button>
+                    </div>`;
+                }
+                html += `</div>`;
+                
+                voiceList.innerHTML = html;
+                voiceList.classList.add('active');
+                attachFilterItemClickHandlers(voiceList, 'voice');
+                const resetBtn = voiceList.querySelector('.reset-selection-btn[data-filter="voice"]');
+                if (resetBtn) resetBtn.addEventListener('click', (e) => { e.stopPropagation(); selectedVoiceKey = null; updateFilterLists(); renderView(); });
+            } else { 
+                voiceList.classList.remove('active'); 
+                setTimeout(() => { if (!activeFilters.voice) voiceList.innerHTML = ''; }, 400);
+            }
+
+            if (activeFilters.dub) {
+                const waiting = getDubWaitingList();
+                const released = getDubReleasedList();
+                let html = '<div>';
+                
+                html += `<div class="filter-subblock"><div class="filter-subblock-title dub">🎧 Ожидаем дубляж</div>`;
+                if (waiting.length > 0) {
+                    html += `<div class="filter-list">${waiting.map(item => {
+                        const itemKey = `${item.series}|${formatDateForCell(item.date)}`;
+                        const isSelected = selectedDubKey === itemKey ? 'selected-dub' : '';
+                        const meta = `Сезон ${item.event[CONFIG.colSeason] || ''} Серия ${item.event[CONFIG.colEpisode] || ''}`;
+                        return `<div class="filter-list-item border-dub ${isSelected}" data-date="${formatDateForCell(item.date)}" data-series="${escapeHtml(item.series)}">
+                            <div><div class="filter-list-name">${escapeHtml(item.series)}</div><div class="filter-list-meta">${meta}</div></div>
+                            <div class="filter-list-date">${formatDateDMY(item.date)}</div>
+                        </div>`;
+                    }).join('')}</div>`;
+                } else {
+                    // 🔥 Исправленная формулировка
+                    html += `<div class="filter-subblock-empty">Уже ничего не ждём, а слушаем любимые голоса</div>`;
+                }
+                html += `</div>`;
+                
+                html += `<div class="filter-subblock"><div class="filter-subblock-title dub">✨ Дубляж этой недели</div>`;
+                if (released.length > 0) {
+                    html += `<div class="filter-list">${released.map(item => {
+                        const itemKey = `${item.series}|${formatDateForCell(item.date)}`;
+                        const isSelected = selectedDubKey === itemKey ? 'selected-dub' : '';
+                        const meta = `Сезон ${item.event[CONFIG.colSeason] || ''} Серия ${item.event[CONFIG.colEpisode] || ''} • эфир ${formatDateDMY(item.date)}`;
+                        return `<div class="filter-list-item border-dub ${isSelected}" data-date="${formatDateForCell(item.date)}" data-series="${escapeHtml(item.series)}">
+                            <div><div class="filter-list-name">${escapeHtml(item.series)}</div><div class="filter-list-meta">${meta}</div></div>
+                            <div class="filter-list-date">${formatDateDMY(item.releaseDate)}</div>
+                        </div>`;
+                    }).join('')}</div>`;
+                } else {
+                    // 🔥 Исправленная формулировка
+                    html += `<div class="filter-subblock-empty">На этой неделе не было новых серий</div>`;
+                }
+                html += `</div>`;
+                
+                if (selectedDubKey) {
+                    const selSeries = getSeriesFromKey(selectedDubKey);
+                    html += `<div style="text-align: center; padding: 12px; margin-top: 8px;">
+                        <button class="reset-selection-btn" data-filter="dub" style="background: rgba(236, 72, 153, 0.2); border: 1px solid rgba(236, 72, 153, 0.4); color: #f9a8d4; padding: 6px 16px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; transition: all 0.2s;">
+                            ✕ Сбросить выбор: ${escapeHtml(selSeries)}
+                        </button>
+                    </div>`;
+                }
+                html += `</div>`;
+                
+                dubList.innerHTML = html;
+                dubList.classList.add('active');
+                attachFilterItemClickHandlers(dubList, 'dub');
+                const resetBtn = dubList.querySelector('.reset-selection-btn[data-filter="dub"]');
+                if (resetBtn) resetBtn.addEventListener('click', (e) => { e.stopPropagation(); selectedDubKey = null; updateFilterLists(); renderView(); });
+            } else { 
+                dubList.classList.remove('active'); 
+                setTimeout(() => { if (!activeFilters.dub) dubList.innerHTML = ''; }, 400);
+            }
+        }
+
+        function attachFilterItemClickHandlers(container, filterType) {
+            container.querySelectorAll('.filter-list-item').forEach(item => {
+                item.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const seriesName = item.dataset.series;
+                    const dateStr = item.dataset.date;
+                    const key = `${seriesName}|${dateStr}`;
+                    
+                    if (filterType === 'airing') {
+                        selectedAiringKey = selectedAiringKey === key ? null : key;
+                    } else if (filterType === 'voice') {
+                        selectedVoiceKey = selectedVoiceKey === key ? null : key;
+                    } else if (filterType === 'dub') {
+                        selectedDubKey = selectedDubKey === key ? null : key;
+                    }
+                    
+                    updateFilterLists();
+                    renderView();
+                    setTimeout(() => scrollToCell(dateStr, seriesName), 300);
+                });
+            });
+        }
+
+        function attachListClickHandlers(container) {
+            container.querySelectorAll('.filter-list-item').forEach(item => {
+                item.addEventListener('click', () => scrollToCell(item.dataset.date, item.dataset.series));
+            });
+        }
+
+        function attachEndedClickHandlers(container) {
+            container.querySelectorAll('.filter-list-item').forEach(item => {
+                item.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const seriesName = item.dataset.series;
+                    const dateStr = item.dataset.date;
+                    if (selectedEndedSeries === seriesName) selectedEndedSeries = null;
+                    else selectedEndedSeries = seriesName;
+                    updateFilterLists();
+                    renderView();
+                    setTimeout(() => scrollToCell(dateStr, seriesName), 100);
+                });
+            });
+        }
+
+        function formatDateDMY(date) {
+            if (!date) return '';
+            return `${String(date.getDate()).padStart(2, '0')}.${String(date.getMonth() + 1).padStart(2, '0')}.${date.getFullYear()}`;
+        }
+        function formatDateForCell(date) { return formatDateDMY(date); }
+
+        function scrollToCell(dateStr, seriesName) {
+            const parts = dateStr.split('.');
+            if (parts.length !== 3) return;
+            
+            const day = parseInt(parts[0]);
+            const month = parseInt(parts[1]) - 1;
+            const year = parseInt(parts[2]);
+            
+            const targetMonthValue = `${year}-${month}`;
+            const currentMonthValue = monthFilterInput.value;
+
+            if (currentMonthValue !== targetMonthValue) {
+                monthFilterInput.value = targetMonthValue;
+                const option = monthDropdown.querySelector(`[data-value="${targetMonthValue}"]`);
+                if (option) {
+                    monthTriggerText.textContent = option.textContent;
+                    monthDropdown.querySelectorAll('.custom-select-option').forEach(o => o.classList.remove('selected'));
+                    option.classList.add('selected');
+                }
+                renderView();
+                setTimeout(() => highlightCell(day, seriesName), 300);
+            } else {
+                highlightCell(day, seriesName);
+            }
+        }
+
+        function highlightCell(day, seriesName) {
+            let cellFound = false;
+            
+            document.querySelectorAll('.day-cell').forEach(cell => {
+                const cellDay = parseInt(cell.dataset.day);
+                
+                if (cellDay === day) {
+                    cell.querySelectorAll('.event-card').forEach(card => {
+                        const title = card.querySelector('.event-title');
+                        if (title && title.textContent.trim() === seriesName) {
+                            cell.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+                            cell.style.transition = 'all 0.5s ease';
+                            cell.style.boxShadow = '0 0 40px rgba(102, 126, 234, 0.8)';
+                            setTimeout(() => { cell.style.boxShadow = ''; }, 2500);
+                            cellFound = true;
+                        }
+                    });
+                }
+            });
+            
+            if (!cellFound) {
+                console.warn(`Не удалось найти трансляцию "${seriesName}" на ${day} число`);
+            }
+        }
+
+        function matchesActiveFilters(seriesName) {
+            const hasAnyFilter = activeFilters.search || activeFilters.airing || activeFilters.newSeason || activeFilters.ended || activeFilters.voice || activeFilters.dub;
+            if (!hasAnyFilter) return true;
+            if (activeFilters.ended && !activeFilters.search) return true;
+            if (activeFilters.newSeason && !activeFilters.search) return true;
+            if (activeFilters.voice && !activeFilters.search) return true;
+            if (activeFilters.dub && !activeFilters.search) return true;
+            if (activeFilters.search && seriesName !== activeFilters.search) return false;
+            if (activeFilters.airing || activeFilters.newSeason || activeFilters.ended) {
+                let matches = false;
+                if (activeFilters.airing && isAiringInCurrentMonth(seriesName)) matches = true;
+                if (activeFilters.newSeason && isWaitingNewSeason(seriesName)) matches = true;
+                if (activeFilters.ended && isSeriesEnded(seriesName)) matches = true;
+                if (!matches) return false;
+            }
+            return true;
+        }
+
+        function getTodayUpdates() {
+            const updates = [];
+            
+            allEvents.forEach(event => {
+                const updatedStr = event[CONFIG.colUpdated] ? String(event[CONFIG.colUpdated]).trim() : '';
+                if (!updatedStr) return;
+                
+                const updatedDate = parseDate(updatedStr);
+                if (!updatedDate) return;
+                
+                const isToday = updatedDate.getTime() === today.getTime();
+                const isYesterday = updatedDate.getTime() === yesterday.getTime();
+                
+                if (!isToday && !isYesterday) return;
+                
+                const changeType = String(event[CONFIG.colChangeType] || '').toLowerCase().trim();
+                
+                const series = event[CONFIG.colSeries].trim();
+                const season = event[CONFIG.colSeason] ? event[CONFIG.colSeason].trim() : '';
+                const episode = event[CONFIG.colEpisode] ? event[CONFIG.colEpisode].trim() : '';
+                const voice = event[CONFIG.colVoice] ? String(event[CONFIG.colVoice]).trim() : '';
+                const dub = event[CONFIG.colDub] ? String(event[CONFIG.colDub]).trim() : '';
+                const translator = event[CONFIG.colTranslator] ? event[CONFIG.colTranslator].trim() : '';
+                const status = event[CONFIG.colStatus] ? event[CONFIG.colStatus].trim() : '';
+                const dateLabel = isToday ? 'Сегодня' : 'Вчера';
+                const dateValue = isToday ? 'today' : 'yesterday';
+                const airDate = formatDateDMY(event._parsedDate);
+                
+                if (changeType.includes('voice') && voice && voice !== 'ожидаем' && voice !== '') {
+                    updates.push({ type: 'voice', series, detail: `Вышла озвучка от AlisaDirilis — Сезон ${season} Серия ${episode}`, date: airDate, dateLabel, dateValue });
+                }
+                if (changeType.includes('dub') && dub && dub !== 'ожидаем' && dub.toLowerCase() !== 'не будет' && dub !== '') {
+                    updates.push({ type: 'dub', series, detail: `Вышел дубляж — Сезон ${season} Серия ${episode}`, date: airDate, dateLabel, dateValue });
+                }
+                if (changeType.includes('status')) {
+                    const statusLower = status.toLowerCase();
+                    if (statusLower.includes('перенос') || statusLower.includes('перенес')) {
+                        updates.push({ type: 'status', series, detail: `Статус изменён на "Перенос" — Сезон ${season} Серия ${episode}`, date: airDate, dateLabel, dateValue });
+                    }
+                }
+                if (changeType.includes('translator') && translator && translator !== 'Не назначен' && translator !== '') {
+                    updates.push({ type: 'translator', series, detail: `Переводчик: ${translator} — Сезон ${season} Серия ${episode}`, date: airDate, dateLabel, dateValue });
+                }
+                
+                if (changeType === 'manual' || changeType === '') {
+                    if (voice && voice !== 'ожидаем' && voice !== '') updates.push({ type: 'voice', series, detail: `Вышла озвучка от AlisaDirilis — Сезон ${season} Серия ${episode}`, date: airDate, dateLabel, dateValue });
+                    if (dub && dub !== 'ожидаем' && dub.toLowerCase() !== 'не будет' && dub !== '') updates.push({ type: 'dub', series, detail: `Вышел дубляж — Сезон ${season} Серия ${episode}`, date: airDate, dateLabel, dateValue });
+                    const statusLower = status.toLowerCase();
+                    if (statusLower.includes('перенос') || statusLower.includes('перенес')) updates.push({ type: 'status', series, detail: `Статус изменён на "Перенос" — Сезон ${season} Серия ${episode}`, date: airDate, dateLabel, dateValue });
+                    if (translator && translator !== 'Не назначен' && translator !== '') updates.push({ type: 'translator', series, detail: `Переводчик: ${translator} — Сезон ${season} Серия ${episode}`, date: airDate, dateLabel, dateValue });
+                }
+            });
+            
+            return updates;
+        }
+
+        function renderUpdates() {
+            todayUpdates = getTodayUpdates();
+            if (todayUpdates.length > 0) {
+                updatesBadge.textContent = todayUpdates.length;
+                updatesBadge.style.display = 'block';
+            } else {
+                updatesBadge.style.display = 'none';
+            }
+            if (todayUpdates.length === 0) {
+                updatesList.innerHTML = '<div class="updates-dropdown-empty">Здоровья твоим рукам! Пока нет новостей для тебя</div>';
+                return;
+            }
+            const typeLabels = { voice: 'Озвучка', dub: 'Дубляж', status: 'Статус', translator: 'Переводчик' };
+            
+            const todayItems = todayUpdates.filter(u => u.dateValue === 'today');
+            const yesterdayItems = todayUpdates.filter(u => u.dateValue === 'yesterday');
+            
+            let html = '';
+            
+            if (todayItems.length > 0) {
+                html += `<div class="updates-day-divider"><span class="updates-day-divider-label today">Сегодня</span></div>`;
+                html += todayItems.map(update => `
+                    <div class="update-item" data-date="${update.date}" data-series="${escapeHtml(update.series)}">
+                        <span class="update-type ${update.type}">${typeLabels[update.type]}</span>
+                        <div class="update-series">${escapeHtml(update.series)}</div>
+                        <div class="update-detail">${escapeHtml(update.detail)}</div>
+                        <div class="update-date-label">${update.dateLabel} • ${update.date}</div>
+                    </div>
+                `).join('');
+            }
+            
+            if (yesterdayItems.length > 0) {
+                html += `<div class="updates-day-divider"><span class="updates-day-divider-label yesterday">Вчера</span></div>`;
+                html += yesterdayItems.map(update => `
+                    <div class="update-item" data-date="${update.date}" data-series="${escapeHtml(update.series)}">
+                        <span class="update-type ${update.type}">${typeLabels[update.type]}</span>
+                        <div class="update-series">${escapeHtml(update.series)}</div>
+                        <div class="update-detail">${escapeHtml(update.detail)}</div>
+                        <div class="update-date-label">${update.dateLabel} • ${update.date}</div>
+                    </div>
+                `).join('');
+            }
+            
+            updatesList.innerHTML = html;
+            
+            updatesList.querySelectorAll('.update-item').forEach(item => {
+                item.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const dateStr = item.dataset.date;
+                    const series = item.dataset.series;
+                    if (dateStr && series) {
+                        selectedAiringKey = null;
+                        selectedVoiceKey = null;
+                        selectedDubKey = null;
+                        updatesDropdown.classList.remove('open');
+                        updatesBtn.classList.remove('active');
+                        scrollToCell(dateStr, series);
+                    }
+                });
+            });
+        }
+
+        // 🔥 Рендер Турецкой коллекции
+        function renderCollection() {
+            let html = '';
+            
+            // Секция Сабины
+            if (TRANSLATORS.sabina.series.length > 0) {
+                html += `<div class="collection-section">`;
+                html += `<a href="${TRANSLATORS.sabina.channel}" target="_blank" class="collection-link">
+                    <span class="link-icon">✈️</span>
+                    <span class="link-text">${TRANSLATORS.sabina.channelName}</span>
+                    <span class="link-platform">Telegram</span>
+                </a>`;
+                html += `<div class="collection-translator" data-translator="sabina">
+                    <div class="collection-translator-name">${TRANSLATORS.sabina.name}</div>
+                    <div class="collection-series-list">`;
+                TRANSLATORS.sabina.series.forEach(s => {
+                    const statusClass = s.status === 'airing' ? 'airing' : s.status === 'new-season' ? 'new-season' : 'ended';
+                    const lastEp = s.lastEpisode ? `С${s.lastEpisode.season} С${s.lastEpisode.episode}` : '';
+                    html += `<div class="collection-series-item" data-series="${escapeHtml(s.name)}" data-season="${s.lastEpisode?.season || ''}" data-episode="${s.lastEpisode?.episode || ''}">
+                        <div class="collection-series-status ${statusClass}"></div>
+                        <div class="collection-series-name">${escapeHtml(s.name)}</div>
+                        ${lastEp ? `<div class="collection-series-episode">${lastEp}</div>` : ''}
+                    </div>`;
+                });
+                html += `</div></div></div>`;
+            }
+            
+            // Секция GET DIZI
+            if (TRANSLATORS.getDizi.translators.some(t => t.series.length > 0)) {
+                html += `<div class="collection-section">`;
+                html += `<a href="${TRANSLATORS.getDizi.group}" target="_blank" class="collection-link">
+                    <span class="link-icon">✈️</span>
+                    <span class="link-text">${TRANSLATORS.getDizi.groupName}</span>
+                    <span class="link-platform">ВК</span>
+                </a>`;
+                TRANSLATORS.getDizi.translators.forEach(t => {
+                    if (t.series.length > 0) {
+                        html += `<div class="collection-translator" data-translator="getdizi-${t.name}">
+                            <div class="collection-translator-name">${t.name}</div>
+                            <div class="collection-series-list">`;
+                        t.series.forEach(s => {
+                            const statusClass = s.status === 'airing' ? 'airing' : s.status === 'new-season' ? 'new-season' : 'ended';
+                            const lastEp = s.lastEpisode ? `С${s.lastEpisode.season} С${s.lastEpisode.episode}` : '';
+                            html += `<div class="collection-series-item" data-series="${escapeHtml(s.name)}" data-season="${s.lastEpisode?.season || ''}" data-episode="${s.lastEpisode?.episode || ''}">
+                                <div class="collection-series-status ${statusClass}"></div>
+                                <div class="collection-series-name">${escapeHtml(s.name)}</div>
+                                ${lastEp ? `<div class="collection-series-episode">${lastEp}</div>` : ''}
+                            </div>`;
+                        });
+                        html += `</div></div>`;
+                    }
+                });
+                html += `</div>`;
+            }
+            
+            // Секция Улькер
+            if (TRANSLATORS.ulker.series.length > 0) {
+                html += `<div class="collection-section">`;
+                html += `<a href="${TRANSLATORS.ulker.channel}" target="_blank" class="collection-link">
+                    <span class="link-icon">✈️</span>
+                    <span class="link-text">${TRANSLATORS.ulker.channelName}</span>
+                    <span class="link-platform">Telegram</span>
+                </a>`;
+                html += `<div class="collection-translator" data-translator="ulker">
+                    <div class="collection-translator-name">${TRANSLATORS.ulker.name}</div>
+                    <div class="collection-series-list">`;
+                TRANSLATORS.ulker.series.forEach(s => {
+                    const statusClass = s.status === 'airing' ? 'airing' : s.status === 'new-season' ? 'new-season' : 'ended';
+                    const lastEp = s.lastEpisode ? `С${s.lastEpisode.season} С${s.lastEpisode.episode}` : '';
+                    html += `<div class="collection-series-item" data-series="${escapeHtml(s.name)}" data-season="${s.lastEpisode?.season || ''}" data-episode="${s.lastEpisode?.episode || ''}">
+                        <div class="collection-series-status ${statusClass}"></div>
+                        <div class="collection-series-name">${escapeHtml(s.name)}</div>
+                        ${lastEp ? `<div class="collection-series-episode">${lastEp}</div>` : ''}
+                    </div>`;
+                });
+                html += `</div></div></div>`;
+            }
+            
+            if (html === '') {
+                html = '<div class="updates-dropdown-empty">Коллекция пуста. Добавьте данные в TRANSLATORS.</div>';
+            }
+            
+            collectionContent.innerHTML = html;
+            
+            // Обработчики для accordion
+            collectionContent.querySelectorAll('.collection-translator').forEach(translator => {
+                translator.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    translator.classList.toggle('expanded');
+                });
+            });
+            
+            // Обработчики для клика на сериал
+            collectionContent.querySelectorAll('.collection-series-item').forEach(item => {
+                item.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const seriesName = item.dataset.series;
+                    const season = item.dataset.season;
+                    const episode = item.dataset.episode;
+                    
+                    // Находим последнюю серию этого сериала в allEvents
+                    const lastEvent = allEvents.find(e => 
+                        e[CONFIG.colSeries].trim() === seriesName &&
+                        (!season || e[CONFIG.colSeason] === season) &&
+                        (!episode || e[CONFIG.colEpisode] === episode)
+                    );
+                    
+                    if (lastEvent && lastEvent._parsedDate) {
+                        const dateStr = formatDateDMY(lastEvent._parsedDate);
+                        scrollToCell(dateStr, seriesName);
+                        collectionDropdown.classList.remove('open');
+                        collectionBtn.classList.remove('active');
+                    }
+                });
+            });
+        }
+
+        function parseFilterValue(value) {
+            if (value === 'all') return { mode: 'all', year: null, month: null };
+            const parts = value.split('-');
+            return parts.length === 2 ? { mode: 'month', year: parseInt(parts[0]), month: parseInt(parts[1]) } : { mode: 'all', year: null, month: null };
+        }
+
+        function scrollToToday() {
+            const todayCell = document.getElementById('today-cell');
+            if (todayCell && !activeFilters.ended) {
+                todayCell.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+                todayCell.style.transition = 'all 0.5s ease';
+                todayCell.style.boxShadow = '0 0 30px rgba(102, 126, 234, 0.6)';
+                setTimeout(() => { todayCell.style.boxShadow = ''; }, 2000);
+            }
+        }
+
+        function renderView() {
+            const wrapper = document.getElementById('calendar-wrapper');
+            wrapper.innerHTML = '';
+            const filter = parseFilterValue(monthFilterInput.value);
+            
+            if (filter.mode === 'all') {
+                currentRenderContext = { mode: 'year', year: null, month: null };
+                const monthsWithEvents = new Set();
+                allEvents.forEach(event => {
+                    if (!event._parsedDate || !matchesActiveFilters(event[CONFIG.colSeries].trim())) return;
+                    monthsWithEvents.add(`${event._parsedDate.getFullYear()}-${event._parsedDate.getMonth()}`);
+                });
+                if (monthsWithEvents.size === 0) {
+                    wrapper.innerHTML = '<div class="text-center text-slate-400 py-12">Нет событий по выбранным фильтрам</div>';
+                    return;
+                }
+                Array.from(monthsWithEvents).sort((a, b) => {
+                    const [ya, ma] = a.split('-').map(Number);
+                    const [yb, mb] = b.split('-').map(Number);
+                    return ya - yb || ma - mb;
+                }).forEach(key => {
+                    const [year, month] = key.split('-').map(Number);
+                    wrapper.appendChild(createMonthBlock(year, month));
+                });
+            } else {
+                currentRenderContext = { mode: 'month', year: filter.year, month: filter.month };
+                wrapper.appendChild(createMonthBlock(filter.year, filter.month));
+            }
+        }
+
+        function createMonthBlock(year, monthIndex) {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'mb-8 last:mb-0';
+            
+            const titleRow = document.createElement('div');
+            titleRow.style.cssText = 'display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 1rem;';
+            
+            const title = document.createElement('div');
+            title.className = 'month-title';
+            title.style.marginBottom = '0';
+            title.textContent = `${monthNames[monthIndex]} ${year}`;
+            
+            const viewFilters = document.createElement('div');
+            viewFilters.className = 'view-filters';
+            
+            const filters = [
+                { key: 'week', label: 'Неделя', cls: 'week' },
+                { key: 'last-week', label: 'Прошлая неделя', cls: 'last-week' },
+                { key: 'month', label: 'Весь месяц', cls: 'month' }
+            ];
+            
+            filters.forEach(f => {
+                const btn = document.createElement('button');
+                btn.className = `view-filter-btn ${f.cls}${calendarViewFilter === f.key ? ' active' : ''}`;
+                btn.textContent = f.label;
+                btn.addEventListener('click', () => {
+                    if (calendarViewFilter === f.key) {
+                        calendarViewFilter = 'month';
+                    } else {
+                        calendarViewFilter = f.key;
+                        if (f.key !== 'month' && monthFilterInput.value === 'all') {
+                            const targetMonth = f.key === 'last-week' ? getWeekRange(-1).weekStart : getWeekRange(0).weekStart;
+                            switchMonthTo(`${targetMonth.getFullYear()}-${targetMonth.getMonth()}`);
+                        }
+                    }
+                    document.querySelectorAll('.view-filter-btn').forEach(b => b.classList.remove('active'));
+                    document.querySelectorAll(`.view-filter-btn.${f.cls}`).forEach(b => b.classList.add('active'));
+                    renderView();
+                });
+                viewFilters.appendChild(btn);
+            });
+            
+            titleRow.appendChild(title);
+            titleRow.appendChild(viewFilters);
+            wrapper.appendChild(titleRow);
+            
+            const header = document.createElement('div');
+            header.className = 'calendar-header';
+            dayNamesFull.forEach((name, idx) => {
+                const dayEl = document.createElement('div');
+                dayEl.className = `text-center text-sm font-bold py-2 ${idx >= 5 ? 'text-purple-400' : 'text-slate-400'}`;
+                dayEl.textContent = name;
+                header.appendChild(dayEl);
+            });
+            wrapper.appendChild(header);
+            
+            const grid = document.createElement('div');
+            grid.className = 'calendar-grid';
+            wrapper.appendChild(grid);
+            renderMonthGridWithLift(grid, year, monthIndex);
+            return wrapper;
+        }
+
+        function getEmptyDayIcon() {
+            return `<svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" class="w-10 h-10 md:w-12 md:h-12 mx-auto mb-1">
+                <path d="M22 14C22 12 23.5 10 25 10C26.5 10 27 11.5 27 13" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
+                <path d="M30 12C30 10 31.5 8 33 8C34.5 8 35 9.5 35 11" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
+                <path d="M38 14C38 12 39.5 10 41 10C42.5 10 43 11.5 43 13" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
+                <path d="M12 24H44V40C44 48 38 54 30 54H26C18 54 12 48 12 40V24Z" fill="#1e293b" stroke="#94a3b8" stroke-width="2" stroke-linejoin="round"/>
+                <path d="M44 28H48C52 28 54 30 54 34C54 38 52 40 48 40H44" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M27 36L24 33C22.5 31.5 22.5 29 24 27.5C25.5 26 27.5 26 29 27.5L30 28.5L31 27.5C32.5 26 34.5 26 36 27.5C37.5 29 37.5 31.5 36 33L33 36L30 39.5L27 36Z" fill="#ef4444" opacity="0.8"/>
+            </svg>`;
+        }
+
+        function renderMonthGridWithLift(grid, year, monthIndex) {
+            grid.innerHTML = '';
+            const firstDay = new Date(year, monthIndex, 1);
+            const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
+            let startDayOfWeek = firstDay.getDay();
+            startDayOfWeek = startDayOfWeek === 0 ? 6 : startDayOfWeek - 1;
+
+            const useAllEvents = activeFilters.ended || activeFilters.newSeason;
+            const eventsByMonthDay = {};
+            allEvents.forEach(event => {
+                const d = event._parsedDate;
+                if (d && d.getMonth() === monthIndex && d.getFullYear() === year) {
+                    if (useAllEvents || matchesActiveFilters(event[CONFIG.colSeries].trim())) {
+                        const day = d.getDate();
+                        if (!eventsByMonthDay[day]) eventsByMonthDay[day] = [];
+                        eventsByMonthDay[day].push(event);
+                    }
+                }
+            });
+
+            const isCurrentMonth = today.getMonth() === monthIndex && today.getFullYear() === year;
+            const allCells = [];
+
+            if (startDayOfWeek > 0) {
+                const prevMonth = monthIndex === 0 ? 11 : monthIndex - 1;
+                const prevYear = monthIndex === 0 ? year - 1 : year;
+                const daysInPrevMonth = new Date(prevYear, prevMonth + 1, 0).getDate();
+                for (let i = startDayOfWeek - 1; i >= 0; i--) {
+                    const day = daysInPrevMonth - i;
+                    const absolutePosition = i;
+                    const row = Math.floor(absolutePosition / 7) + 1;
+                    const col = (absolutePosition % 7) + 1;
+                    const dateObj = new Date(prevYear, prevMonth, day);
+                    const dayOfWeek = dateObj.getDay();
+                    const dayIndex = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+                    const dayEvents = allEvents.filter(e => {
+                        const d = e._parsedDate;
+                        return d && d.getFullYear() === prevYear && d.getMonth() === prevMonth && d.getDate() === day && matchesActiveFilters(e[CONFIG.colSeries].trim());
+                    });
+                    allCells.push({ type: 'prev-month', day, dayIndex, dateObj, dayEvents, row, col, isPastDay: true, isToday: false });
+                }
+            }
+
+            for (let day = 1; day <= daysInMonth; day++) {
+                const dateObj = new Date(year, monthIndex, day);
+                const dayOfWeek = dateObj.getDay();
+                const dayIndex = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+                const absolutePosition = startDayOfWeek + (day - 1);
+                const row = Math.floor(absolutePosition / 7) + 1;
+                const col = (absolutePosition % 7) + 1;
+                const isPastDay = dateObj < today;
+                const isToday = isCurrentMonth && day === today.getDate();
+                const dayEvents = eventsByMonthDay[day] || [];
+                allCells.push({ type: 'current-month', day, dayIndex, dateObj, dayEvents, row, col, isPastDay, isToday });
+            }
+
+            const totalCells = startDayOfWeek + daysInMonth;
+            const remainingCells = 7 - (totalCells % 7);
+            if (remainingCells < 7) {
+                const nextMonth = monthIndex === 11 ? 0 : monthIndex + 1;
+                const nextYear = monthIndex === 11 ? year + 1 : year;
+                for (let i = 0; i < remainingCells; i++) {
+                    const day = i + 1;
+                    const dateObj = new Date(nextYear, nextMonth, day);
+                    const dayOfWeek = dateObj.getDay();
+                    const dayIndex = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+                    const absolutePosition = totalCells + i;
+                    const row = Math.floor(absolutePosition / 7) + 1;
+                    const col = (absolutePosition % 7) + 1;
+                    const dayEvents = allEvents.filter(e => {
+                        const d = e._parsedDate;
+                        return d && d.getFullYear() === nextYear && d.getMonth() === nextMonth && d.getDate() === day && matchesActiveFilters(e[CONFIG.colSeries].trim());
+                    });
+                    allCells.push({ type: 'next-month', day, dayIndex, dateObj, dayEvents, row, col, isPastDay: false, isToday: false });
+                }
+            }
+
+            const isMobileView = window.innerWidth < 768;
+            let minRow = 1;
+            if ((activeFilters.airing || activeFilters.voice || activeFilters.dub) && !isMobileView) {
+                for (const cell of allCells) {
+                    if (!cell.isPastDay || cell.dayEvents.length > 0) { minRow = cell.row; break; }
+                }
+            }
+
+            const visibleCells = allCells.filter(cell => cell.row >= minRow).map(cell => ({ ...cell, displayRow: cell.row - minRow + 1 }));
+
+            const currentWeek = getWeekRange(0);
+            const lastWeek = getWeekRange(-1);
+
+            let rangeStart = null;
+            if (calendarViewFilter === 'week') {
+                rangeStart = currentWeek.weekStart;
+            } else if (calendarViewFilter === 'last-week') {
+                rangeStart = lastWeek.weekStart;
+            }
+
+            const filteredCells = visibleCells.filter(cell => {
+                if (!rangeStart) return true;
+                return cell.dateObj >= rangeStart;
+            });
+
+            const finalCells = filteredCells.map((cell, index) => ({
+                ...cell,
+                displayRow: Math.floor(index / 7) + 1,
+                displayCol: (index % 7) + 1
+            }));
+
+            finalCells.forEach(cell => {
+                const { type, day, dayIndex, dateObj, dayEvents, col, displayRow, isPastDay, isToday, displayCol } = cell;
+                let cellEl;
+                
+                if (isMobileView && (type === 'prev-month' || type === 'next-month')) return;
+                
+                if (type === 'prev-month' || type === 'next-month') {
+                    cellEl = document.createElement('div');
+                    cellEl.className = `day-cell ${type === 'prev-month' ? 'prev-month-day' : 'next-month-day'}`;
+                    cellEl.dataset.day = day;
+                    cellEl.style.cssText = 'background: rgba(15, 23, 42, 0.3); min-height: 120px; padding: 8px; display: flex; flex-direction: column; border-radius: 12px; border: 1px solid rgba(148, 163, 184, 0.1); opacity: 0.35; filter: grayscale(0.6);';
+                    if (!isMobileView) {
+                        cellEl.style.gridColumn = displayCol;
+                        cellEl.style.gridRow = displayRow;
+                    }
+                    const isWeekend = dayIndex >= 5;
+                    const dayHeader = document.createElement('div');
+                    dayHeader.style.cssText = 'display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 8px;';
+                    const dayName = dayNamesShort[dayIndex];
+                    dayHeader.innerHTML = `${dayName ? `<span style="font-size: 12px; font-weight: 700; color: ${isWeekend ? 'rgba(167, 139, 250, 0.7)' : '#64748b'};">${dayName}</span>` : '<span></span>'}<span style="font-size: 14px; font-weight: 700; color: #475569;">${day}</span>`;
+                    cellEl.appendChild(dayHeader);
+                    applyCellHighlighting(cellEl, dayEvents, dateObj, type === 'prev-month', false);
+                    grid.appendChild(cellEl);
+                } else {
+                    const isWeekend = dayIndex >= 5;
+                    const isTodayHighlight = isToday && !activeFilters.ended;
+                    let cellStyle = 'background: rgba(30, 41, 59, 0.4); min-height: 120px; padding: 8px; display: flex; flex-direction: column; position: relative; transition: all 0.3s; border-radius: 12px; border: 1px solid rgba(148, 163, 184, 0.2);';
+                    if (!isMobileView) {
+                        cellStyle += ` grid-column: ${displayCol}; grid-row: ${displayRow};`;
+                    }
+                    if (isTodayHighlight) cellStyle += ' box-shadow: 0 0 20px rgba(102, 126, 234, 0.3), inset 0 0 20px rgba(102, 126, 234, 0.1); border-color: rgba(167, 139, 250, 0.5);';
+                    
+                    cellEl = document.createElement('div');
+                    cellEl.className = 'day-cell';
+                    cellEl.dataset.day = day;
+                    cellEl.style.cssText = cellStyle;
+                    if (isToday && !activeFilters.ended) cellEl.id = 'today-cell';
+                    
+                    const dayHeader = document.createElement('div');
+                    dayHeader.style.cssText = 'display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 8px;';
+                    const dayName = dayNamesShort[dayIndex];
+                    dayHeader.innerHTML = `${dayName ? `<span style="font-size: 12px; font-weight: 700; color: ${isTodayHighlight ? '#a78bfa' : (isWeekend ? 'rgba(167, 139, 250, 0.7)' : '#64748b')}">${dayName}</span>` : '<span></span>'}<span style="font-size: 14px; font-weight: 700; color: ${isTodayHighlight ? '#a78bfa' : '#cbd5e1'};">${day}</span>`;
+                    cellEl.appendChild(dayHeader);
+                    if ((activeFilters.airing || activeFilters.voice || activeFilters.dub) && isPastDay && !isMobileView) { cellEl.style.opacity = '0.2'; cellEl.style.filter = 'grayscale(0.6)'; }
+                    applyCellHighlighting(cellEl, dayEvents, dateObj, false, isToday);
+                    grid.appendChild(cellEl);
+                }
+            });
+        }
+
+        function applyCellHighlighting(cell, dayEvents, dateObj, isPrevMonth, isToday) {
+            const isPastDay = dateObj < today;
+            
+            if (activeFilters.search) {
+                const searchSeries = activeFilters.search;
+                const nearestEvent = findNearestEvent(searchSeries);
+                const hasSearchSeries = dayEvents.some(e => e[CONFIG.colSeries].trim() === searchSeries);
+                const isNearestCell = nearestEvent && nearestEvent._parsedDate && 
+                    nearestEvent._parsedDate.getDate() === dateObj.getDate() &&
+                    nearestEvent._parsedDate.getMonth() === dateObj.getMonth() &&
+                    nearestEvent._parsedDate.getFullYear() === dateObj.getFullYear();
+                
+                if (isNearestCell) {
+                    cell.style.borderColor = 'rgba(16, 185, 129, 0.7)';
+                    cell.style.boxShadow = '0 0 20px rgba(16, 185, 129, 0.4), inset 0 0 15px rgba(16, 185, 129, 0.1)';
+                    dayEvents.forEach(event => {
+                        if (event[CONFIG.colSeries].trim() === searchSeries) cell.appendChild(createEventElement(event, false, false, true, false, isToday));
+                        else cell.appendChild(createEventElement(event, true, false, false, false, isToday));
+                    });
+                } else if (hasSearchSeries) {
+                    dayEvents.forEach(event => {
+                        if (event[CONFIG.colSeries].trim() === searchSeries) cell.appendChild(createEventElement(event, false, false, false, false, isToday));
+                        else cell.appendChild(createEventElement(event, true, false, false, false, isToday));
+                    });
+                } else if (dayEvents.length > 0) {
+                    cell.style.opacity = '0.2'; cell.style.filter = 'grayscale(0.6)';
+                    dayEvents.forEach(event => cell.appendChild(createEventElement(event, true, false, false, false, isToday)));
+                } else {
+                    cell.style.opacity = '0.2'; cell.style.filter = 'grayscale(0.6)';
+                    if (!isPrevMonth) {
+                        const emptyBlock = document.createElement('div');
+                        emptyBlock.style.cssText = 'opacity: 0.25; display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 1; margin-top: 4px;';
+                        emptyBlock.innerHTML = `${getEmptyDayIcon()}<div class="empty-day-text">Сегодня без<br>турецких сериалов</div>`;
+                        cell.appendChild(emptyBlock);
+                    }
+                }
+            } else if (activeFilters.newSeason && selectedNewSeasonSeries) {
+                const hasSelectedNewSeason = dayEvents.some(e => e[CONFIG.colSeries].trim() === selectedNewSeasonSeries && (String(e[CONFIG.colStatus] || '').toLowerCase().includes('финал сезона') || String(e[CONFIG.colStatus] || '').toLowerCase().includes('в эфире')));
+                if (hasSelectedNewSeason) {
+                    cell.style.borderColor = 'rgba(59, 130, 246, 0.6)'; cell.style.boxShadow = '0 0 15px rgba(59, 130, 246, 0.3)';
+                    dayEvents.forEach(event => {
+                        const status = String(event[CONFIG.colStatus] || '').toLowerCase();
+                        if (event[CONFIG.colSeries].trim() === selectedNewSeasonSeries && (status.includes('финал сезона') || status.includes('в эфире')))
+                            cell.appendChild(createEventElement(event, false, false, false, true, isToday));
+                        else cell.appendChild(createEventElement(event, true, false, false, false, isToday));
+                    });
+                } else {
+                    cell.style.opacity = '0.2'; cell.style.filter = 'grayscale(0.6)';
+                    if (dayEvents.length > 0) dayEvents.forEach(event => cell.appendChild(createEventElement(event, true, false, false, false, isToday)));
+                    else if (!isPrevMonth) {
+                        const emptyBlock = document.createElement('div');
+                        emptyBlock.style.cssText = 'opacity: 0.25; display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 1; margin-top: 4px;';
+                        emptyBlock.innerHTML = `${getEmptyDayIcon()}<div class="empty-day-text">Сегодня без<br>турецких сериалов</div>`;
+                        cell.appendChild(emptyBlock);
+                    }
+                }
+            } else if (activeFilters.ended) {
+                const hasEndedSeries = dayEvents.some(e => String(e[CONFIG.colStatus] || '').toLowerCase().includes('финал сериала'));
+                if (selectedEndedSeries) {
+                    const hasSelectedEnded = dayEvents.some(e => e[CONFIG.colSeries].trim() === selectedEndedSeries && String(e[CONFIG.colStatus] || '').toLowerCase().includes('финал сериала'));
+                    if (hasSelectedEnded) {
+                        cell.style.borderColor = 'rgba(168, 85, 247, 0.6)'; cell.style.boxShadow = '0 0 15px rgba(168, 85, 247, 0.3)';
+                        dayEvents.forEach(event => {
+                            const status = String(event[CONFIG.colStatus] || '').toLowerCase();
+                            if (event[CONFIG.colSeries].trim() === selectedEndedSeries && status.includes('финал сериала'))
+                                cell.appendChild(createEventElement(event, false, true, false, false, isToday));
+                            else cell.appendChild(createEventElement(event, true, false, false, false, isToday));
+                        });
+                    } else {
+                        cell.style.opacity = '0.2'; cell.style.filter = 'grayscale(0.6)';
+                        if (dayEvents.length > 0) dayEvents.forEach(event => cell.appendChild(createEventElement(event, true, false, false, false, isToday)));
+                        else if (!isPrevMonth) {
+                            const emptyBlock = document.createElement('div');
+                            emptyBlock.style.cssText = 'opacity: 0.25; display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 1; margin-top: 4px;';
+                            emptyBlock.innerHTML = `${getEmptyDayIcon()}<div class="empty-day-text">Сегодня без<br>турецких сериалов</div>`;
+                            cell.appendChild(emptyBlock);
+                        }
+                    }
+                } else {
+                    if (hasEndedSeries) {
+                        cell.style.borderColor = 'rgba(168, 85, 247, 0.6)'; cell.style.boxShadow = '0 0 15px rgba(168, 85, 247, 0.3)';
+                        dayEvents.forEach(event => {
+                            const status = String(event[CONFIG.colStatus] || '').toLowerCase();
+                            if (status.includes('финал сериала')) cell.appendChild(createEventElement(event, false, true, false, false, isToday));
+                            else cell.appendChild(createEventElement(event, true, false, false, false, isToday));
+                        });
+                    } else {
+                        cell.style.opacity = '0.2'; cell.style.filter = 'grayscale(0.6)';
+                        if (dayEvents.length > 0) dayEvents.forEach(event => cell.appendChild(createEventElement(event, true, false, false, false, isToday)));
+                        else if (!isPrevMonth) {
+                            const emptyBlock = document.createElement('div');
+                            emptyBlock.style.cssText = 'opacity: 0.25; display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 1; margin-top: 4px;';
+                            emptyBlock.innerHTML = `${getEmptyDayIcon()}<div class="empty-day-text">Сегодня без<br>турецких сериалов</div>`;
+                            cell.appendChild(emptyBlock);
+                        }
+                    }
+                }
+            } else if (activeFilters.airing) {
+                if (selectedAiringKey) {
+                    const [selSeries, selDate] = selectedAiringKey.split('|');
+                    const hasSelectedInCell = dayEvents.some(e => 
+                        e[CONFIG.colSeries].trim() === selSeries && formatDateDMY(e._parsedDate) === selDate
+                    );
+                    if (hasSelectedInCell) {
+                        cell.style.borderColor = 'rgba(16, 185, 129, 0.6)';
+                        cell.style.boxShadow = '0 0 15px rgba(16, 185, 129, 0.3)';
+                        cell.style.opacity = '1';
+                        cell.style.filter = 'none';
+                        dayEvents.forEach(event => {
+                            const eventKey = `${event[CONFIG.colSeries].trim()}|${formatDateDMY(event._parsedDate)}`;
+                            if (eventKey === selectedAiringKey)
+                                cell.appendChild(createEventElement(event, false, false, false, false, isToday, 'airing'));
+                            else cell.appendChild(createEventElement(event, true, false, false, false, isToday));
+                        });
+                    } else {
+                        cell.style.opacity = '0.2'; cell.style.filter = 'grayscale(0.6)';
+                        if (dayEvents.length > 0) dayEvents.forEach(event => cell.appendChild(createEventElement(event, true, false, false, false, isToday)));
+                        else if (!isPrevMonth) {
+                            const emptyBlock = document.createElement('div');
+                            emptyBlock.style.cssText = 'opacity: 0.25; display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 1; margin-top: 4px;';
+                            emptyBlock.innerHTML = `${getEmptyDayIcon()}<div class="empty-day-text">Сегодня без<br>турецких сериалов</div>`;
+                            cell.appendChild(emptyBlock);
+                        }
+                    }
+                } else {
+                    if (dayEvents.length > 0) {
+                        dayEvents.forEach(event => cell.appendChild(createEventElement(event, false, false, false, false, isToday)));
+                    } else if (!isPrevMonth) {
+                        const emptyBlock = document.createElement('div');
+                        emptyBlock.style.cssText = 'opacity: 0.25; display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 1; margin-top: 4px;';
+                        emptyBlock.innerHTML = `${getEmptyDayIcon()}<div class="empty-day-text">Сегодня без<br>турецких сериалов</div>`;
+                        cell.appendChild(emptyBlock);
+                    }
+                }
+            } else if (activeFilters.voice) {
+                if (selectedVoiceKey) {
+                    const [selSeries, selDate] = selectedVoiceKey.split('|');
+                    const hasSelectedInCell = dayEvents.some(e => 
+                        e[CONFIG.colSeries].trim() === selSeries && formatDateDMY(e._parsedDate) === selDate
+                    );
+                    if (hasSelectedInCell) {
+                        cell.style.borderColor = 'rgba(249, 115, 22, 0.6)';
+                        cell.style.boxShadow = '0 0 15px rgba(249, 115, 22, 0.3)';
+                        cell.style.opacity = '1';
+                        cell.style.filter = 'none';
+                        dayEvents.forEach(event => {
+                            const eventKey = `${event[CONFIG.colSeries].trim()}|${formatDateDMY(event._parsedDate)}`;
+                            if (eventKey === selectedVoiceKey)
+                                cell.appendChild(createEventElement(event, false, false, false, false, isToday, 'voice'));
+                            else cell.appendChild(createEventElement(event, true, false, false, false, isToday));
+                        });
+                    } else {
+                        cell.style.opacity = '0.2'; cell.style.filter = 'grayscale(0.6)';
+                        if (dayEvents.length > 0) dayEvents.forEach(event => cell.appendChild(createEventElement(event, true, false, false, false, isToday)));
+                        else if (!isPrevMonth) {
+                            const emptyBlock = document.createElement('div');
+                            emptyBlock.style.cssText = 'opacity: 0.25; display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 1; margin-top: 4px;';
+                            emptyBlock.innerHTML = `${getEmptyDayIcon()}<div class="empty-day-text">Сегодня без<br>турецких сериалов</div>`;
+                            cell.appendChild(emptyBlock);
+                        }
+                    }
+                } else {
+                    if (dayEvents.length > 0) {
+                        dayEvents.forEach(event => cell.appendChild(createEventElement(event, false, false, false, false, isToday)));
+                    } else if (!isPrevMonth) {
+                        const emptyBlock = document.createElement('div');
+                        emptyBlock.style.cssText = 'opacity: 0.25; display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 1; margin-top: 4px;';
+                        emptyBlock.innerHTML = `${getEmptyDayIcon()}<div class="empty-day-text">Сегодня без<br>турецких сериалов</div>`;
+                        cell.appendChild(emptyBlock);
+                    }
+                }
+            } else if (activeFilters.dub) {
+                if (selectedDubKey) {
+                    const [selSeries, selDate] = selectedDubKey.split('|');
+                    const hasSelectedInCell = dayEvents.some(e => 
+                        e[CONFIG.colSeries].trim() === selSeries && formatDateDMY(e._parsedDate) === selDate
+                    );
+                    if (hasSelectedInCell) {
+                        cell.style.borderColor = 'rgba(236, 72, 153, 0.6)';
+                        cell.style.boxShadow = '0 0 15px rgba(236, 72, 153, 0.3)';
+                        cell.style.opacity = '1';
+                        cell.style.filter = 'none';
+                        dayEvents.forEach(event => {
+                            const eventKey = `${event[CONFIG.colSeries].trim()}|${formatDateDMY(event._parsedDate)}`;
+                            if (eventKey === selectedDubKey)
+                                cell.appendChild(createEventElement(event, false, false, false, false, isToday, 'dub'));
+                            else cell.appendChild(createEventElement(event, true, false, false, false, isToday));
+                        });
+                    } else {
+                        cell.style.opacity = '0.2'; cell.style.filter = 'grayscale(0.6)';
+                        if (dayEvents.length > 0) dayEvents.forEach(event => cell.appendChild(createEventElement(event, true, false, false, false, isToday)));
+                        else if (!isPrevMonth) {
+                            const emptyBlock = document.createElement('div');
+                            emptyBlock.style.cssText = 'opacity: 0.25; display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 1; margin-top: 4px;';
+                            emptyBlock.innerHTML = `${getEmptyDayIcon()}<div class="empty-day-text">Сегодня без<br>турецких сериалов</div>`;
+                            cell.appendChild(emptyBlock);
+                        }
+                    }
+                } else {
+                    if (dayEvents.length > 0) {
+                        dayEvents.forEach(event => cell.appendChild(createEventElement(event, false, false, false, false, isToday)));
+                    } else if (!isPrevMonth) {
+                        const emptyBlock = document.createElement('div');
+                        emptyBlock.style.cssText = 'opacity: 0.25; display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 1; margin-top: 4px;';
+                        emptyBlock.innerHTML = `${getEmptyDayIcon()}<div class="empty-day-text">Сегодня без<br>турецких сериалов</div>`;
+                        cell.appendChild(emptyBlock);
+                    }
+                }
+            } else {
+                if (dayEvents.length > 0) {
+                    dayEvents.forEach(event => {
+                        const isEndedHighlight = activeFilters.ended && isSeriesEnded(event[CONFIG.colSeries].trim());
+                        cell.appendChild(createEventElement(event, false, isEndedHighlight, false, false, isToday));
+                    });
+                } else {
+                    const emptyBlock = document.createElement('div');
+                    emptyBlock.style.cssText = 'opacity: 0.25; display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 1; margin-top: 4px;';
+                    emptyBlock.innerHTML = `${getEmptyDayIcon()}<div class="empty-day-text">Сегодня без<br>турецких сериалов</div>`;
+                    cell.appendChild(emptyBlock);
+                }
+            }
+        }
+
+        const noveltyFirstClick = new Set();
+
+        function createEventElement(event, isFaded, isEndedHighlight, isSearchHighlight, isNewSeasonHighlight, isToday, highlightType = null) {
+            const statusRaw = (event[CONFIG.colStatus] || '').trim().toLowerCase();
+            let dotClass = 'dot-active', isMoved = false, isSpecial = false, specialText = '';
+            let bgClass = 'bg-slate-800/60 border-slate-600/30 hover:bg-slate-800/80';
+            const eventDate = event._parsedDate;
+            const isPast = eventDate && eventDate < today;
+            const isDeepFaded = isFaded;
+            const isLightFaded = isPast && !isFaded;
+            
+            if (statusRaw.includes('финал сезона') || statusRaw.includes('финал сериала') || statusRaw.includes('новинка')) {
+                isSpecial = true; specialText = statusRaw;
+                bgClass = 'bg-yellow-500/10 border-yellow-500/30 hover:bg-yellow-500/20';
+                if (isToday) { dotClass = 'dot-special-today'; bgClass = 'today-bg-special'; }
+                else if (isDeepFaded || isLightFaded) dotClass = 'dot-special-past';
+                else dotClass = 'dot-special';
+            } else if (statusRaw.includes('перенес') || statusRaw.includes('перенос') || statusRaw.includes('измен')) {
+                isMoved = true; bgClass = 'bg-red-500/10 border-red-500/30 hover:bg-red-500/20';
+                if (isToday) { dotClass = 'dot-moved-today'; bgClass = 'today-bg-moved'; }
+                else if (isDeepFaded || isLightFaded) dotClass = 'dot-moved-past';
+                else dotClass = 'dot-moved';
+            } else {
+                if (isToday) { dotClass = 'dot-active-today'; bgClass = 'today-bg-active'; }
+                else if (isDeepFaded || isLightFaded) dotClass = 'dot-past';
+                else dotClass = 'dot-active';
+            }
+
+            const eventEl = document.createElement('div');
+            let extraClasses = '';
+            if (isDeepFaded) extraClasses += ' faded-event';
+            else if (isLightFaded) extraClasses += ' past-event';
+            if (isEndedHighlight) extraClasses += ' highlighted-event';
+            if (isSearchHighlight) extraClasses += ' search-nearest-event';
+            if (isNewSeasonHighlight) extraClasses += ' highlighted-new-season-event';
+            if (highlightType === 'airing') extraClasses += ' highlighted-airing-event';
+            else if (highlightType === 'voice') extraClasses += ' highlighted-voice-event';
+            else if (highlightType === 'dub') extraClasses += ' highlighted-dub-event';
+            eventEl.className = `event-card text-xs p-2 rounded-xl border mb-1.5 ${bgClass} ${extraClasses}`;
+            
+            const isNovelty = isSpecial && specialText.includes('новинка');
+            const noveltyKey = `${event[CONFIG.colSeries]}-${formatDateDMY(eventDate)}`;
+            
+            let html = `<div class="flex items-center mb-1 gap-1">`;
+            if (isNovelty) {
+                html += `<div class="novelty-wrapper" data-novelty-key="${noveltyKey}">
+                    <span class="status-dot ${dotClass}"></span>
+                    <div class="novelty-tooltip">Смотрим без подписки</div>
+                    <span class="font-bold text-slate-200 event-title flex-1" style="word-wrap: break-word; overflow-wrap: break-word;" title="${escapeHtml(event[CONFIG.colSeries])}">${escapeHtml(event[CONFIG.colSeries])}</span>
+                </div>`;
+            } else {
+                html += `<span class="status-dot ${dotClass}"></span>
+                    <span class="font-bold text-slate-200 event-title flex-1" style="word-wrap: break-word; overflow-wrap: break-word;" title="${escapeHtml(event[CONFIG.colSeries])}">${escapeHtml(event[CONFIG.colSeries])}</span>`;
+            }
+            html += `</div>`;
+            
+            const season = event[CONFIG.colSeason] ? event[CONFIG.colSeason].trim() : '';
+            const episode = event[CONFIG.colEpisode] ? event[CONFIG.colEpisode].trim() : '';
+            let seasonEpisodeDisplay = '';
+            if (season && episode) seasonEpisodeDisplay = `Сезон ${season} Серия ${episode}`;
+            else if (season) seasonEpisodeDisplay = `Сезон ${season}`;
+            else if (episode) seasonEpisodeDisplay = `Серия ${episode}`;
+            
+            const mod = event[CONFIG.colModerator] ? event[CONFIG.colModerator].trim() : 'Не назначен';
+            const banText = event[CONFIG.colBan] ? event[CONFIG.colBan].trim() : '';
+            const hasBan = banText && banText !== '-';
+
+            if (seasonEpisodeDisplay) html += `<div class="text-[10px] text-slate-500 mb-0.5 font-medium event-info">${seasonEpisodeDisplay}</div>`;
+            html += `<div class="text-[10px] text-slate-400 event-info" style="word-wrap: break-word;">Модератор: ${mod}</div>`;
+            if (isMoved) html += `<div class="text-[10px] text-red-400 font-bold mt-0.5">перенос</div>`;
+            if (isSpecial && specialText) html += `<div class="text-[10px] text-yellow-400 font-bold mt-0.5">${specialText}</div>`;
+            if (hasBan) html += `<div class="text-[10px] text-red-400 mt-1 font-semibold flex items-center bg-red-500/10 border border-red-500/30 px-1.5 py-1 rounded-lg w-fit" style="word-wrap: break-word;"><svg class="w-3 h-3 mr-1 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path></svg> ${escapeHtml(banText)}</div>`;
+
+            eventEl.innerHTML = html;
+            
+            if (isNovelty) {
+                eventEl.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const isMobile = window.innerWidth < 768;
+                    if (isMobile) {
+                        if (!noveltyFirstClick.has(noveltyKey)) {
+                            const wrapper = eventEl.querySelector('.novelty-wrapper');
+                            if (wrapper) { wrapper.classList.add('show-tooltip'); noveltyFirstClick.add(noveltyKey); setTimeout(() => { wrapper.classList.remove('show-tooltip'); noveltyFirstClick.delete(noveltyKey); }, 2000); }
+                        } else { noveltyFirstClick.delete(noveltyKey); openModal(event); }
+                    } else { openModal(event); }
+                });
+            } else {
+                eventEl.addEventListener('click', (e) => { e.stopPropagation(); openModal(event); });
+            }
+            return eventEl;
+        }
+
+        const modalOverlay = document.getElementById('modal-overlay');
+        const flipCard = document.getElementById('flip-card');
+        const flipContainer = document.querySelector('.flip-container');
+
+        function formatDateWithDay(dateStr) {
+            if (!dateStr) return '—';
+            const d = parseDate(dateStr.toString().trim());
+            if (!d) return dateStr;
+            return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')} (${d.toLocaleDateString('ru-RU', { weekday: 'long' })})`;
+        }
+
+        function openModal(event) {
+            closeDropdown();
+            const statusRaw = (event[CONFIG.colStatus] || '').trim().toLowerCase();
+            let isMoved = false;
+            if (statusRaw.includes('перенес') || statusRaw.includes('перенос') || statusRaw.includes('измен')) isMoved = true;
+            const backContent = document.getElementById('modal-back-content');
+            backContent.innerHTML = '';
+            const rows = [];
+            if (isMoved) {
+                const reason = event[CONFIG.colMoveReason] ? event[CONFIG.colMoveReason].trim() : '';
+                const answer = event[CONFIG.colMoveAnswer] ? event[CONFIG.colMoveAnswer].trim() : '';
+                if (reason) rows.push({ label: '📋 Причина переноса', value: reason });
+                if (answer) rows.push({ label: '💬 Ответ для пользователей', value: answer, isQuote: true });
+            } else {
+                const translator = event[CONFIG.colTranslator] ? event[CONFIG.colTranslator].trim() : '';
+                if (translator) rows.push({ label: '🌐 Переводчик', value: translator });
+                const voice = event[CONFIG.colVoice] ? event[CONFIG.colVoice].trim() : '';
+                const dub = event[CONFIG.colDub] ? event[CONFIG.colDub].trim() : '';
+                let voiceValue = 'ожидаем'; if (voice) voiceValue = formatDateWithDay(voice);
+                rows.push({ label: '🎙️ Озвучка от AlisaDirilis', value: voiceValue });
+                let dubValue = 'ожидаем';
+                if (dub) { const dubLower = dub.toLowerCase(); if (dubLower.includes('не будет')) dubValue = 'Не будет'; else dubValue = formatDateWithDay(dub); }
+                rows.push({ label: '🎤 Дубляж', value: dubValue });
+            }
+            rows.forEach(row => {
+                const rowEl = document.createElement('div');
+                rowEl.className = 'info-row';
+                if (row.isQuote) {
+                    rowEl.innerHTML = `<div class="info-label">${row.label}</div><div class="quote-box" data-copy-text="${escapeHtml(row.value)}"><div class="quote-text">${escapeHtml(row.value)}</div><div class="copy-hint"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"></path></svg><span class="copy-hint-text">Нажмите, чтобы скопировать</span></div></div>`;
+                } else {
+                    rowEl.innerHTML = `<div class="info-label">${row.label}</div><div class="info-value">${escapeHtml(row.value)}</div>`;
+                }
+                backContent.appendChild(rowEl);
+            });
+            backContent.querySelectorAll('.quote-box').forEach(box => {
+                box.addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    const text = box.getAttribute('data-copy-text');
+                    try {
+                        await navigator.clipboard.writeText(text);
+                        box.classList.add('copied');
+                        const hint = box.querySelector('.copy-hint-text'); if (hint) hint.textContent = '✓ Скопировано!';
+                        const hintContainer = box.querySelector('.copy-hint'); if (hintContainer) hintContainer.classList.add('copied');
+                        setTimeout(() => { box.classList.remove('copied'); if (hint) hint.textContent = 'Нажмите, чтобы скопировать'; if (hintContainer) hintContainer.classList.remove('copied'); }, 2000);
+                    } catch (err) {
+                        const textarea = document.createElement('textarea'); textarea.value = text; textarea.style.position = 'fixed'; textarea.style.opacity = '0';
+                        document.body.appendChild(textarea); textarea.select();
+                        try { document.execCommand('copy'); box.classList.add('copied'); const hint = box.querySelector('.copy-hint-text'); if (hint) hint.textContent = '✓ Скопировано!'; setTimeout(() => { box.classList.remove('copied'); if (hint) hint.textContent = 'Нажмите, чтобы скопировать'; }, 2000); } catch (e2) { console.error('Не удалось скопировать', e2); }
+                        document.body.removeChild(textarea);
+                    }
+                });
+            });
+            setTimeout(() => { const backFace = document.querySelector('.flip-back'); const minHeight = Math.max(200, backFace.scrollHeight + 60); flipContainer.style.height = `${minHeight}px`; flipCard.style.height = `${minHeight}px`; }, 10);
+            flipCard.classList.remove('flipped');
+            modalOverlay.classList.add('active');
+            document.body.style.overflow = 'hidden';
+            setTimeout(() => flipCard.classList.add('flipped'), 50);
+        }
+
+        function closeModal() {
+            modalOverlay.classList.remove('active');
+            document.body.style.overflow = '';
+            setTimeout(() => { flipCard.classList.remove('flipped'); setTimeout(() => { flipContainer.style.height = ''; flipCard.style.height = ''; }, 300); }, 300);
+        }
+
+        modalOverlay.addEventListener('click', (e) => { if (e.target === modalOverlay) closeModal(); });
+        document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && modalOverlay.classList.contains('active')) closeModal(); });
+
+        function escapeHtml(text) { if (!text) return ''; const div = document.createElement('div'); div.textContent = text; return div.innerHTML; }
+
+        let resizeTimer;
+        window.addEventListener('resize', () => {
+            clearTimeout(resizeTimer);
+            resizeTimer = setTimeout(() => {
+                if (allEvents.length > 0) renderView();
+            }, 250);
+        });
+    </script>
+</body>
+</html>
